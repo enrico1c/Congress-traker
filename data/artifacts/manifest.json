@@ -1,0 +1,13 @@
+{
+  "generatedAt": "2026-04-01T10:47:08Z",
+  "pipelineVersion": "1.0.0-seed",
+  "sources": [
+    {
+      "name": "Seed data",
+      "url": "-",
+      "requiresKey": false,
+      "healthy": true,
+      "notes": "Sample data \u2014 run pipeline for real data"
+    }
+  ]
+}

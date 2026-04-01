@@ -1,0 +1,71 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-surface text-white;
+    min-height: 100vh;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-surface;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-neutral-600;
+  }
+
+  /* Hide scrollbar for nav overflow */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@layer components {
+  /* Recharts tooltip dark overrides */
+  .recharts-default-tooltip {
+    @apply !bg-surface-raised !border-surface-border !rounded-lg;
+  }
+  .recharts-tooltip-label {
+    @apply !text-white !text-xs !font-semibold;
+  }
+  .recharts-tooltip-item {
+    @apply !text-neutral-300 !text-xs;
+  }
+
+  /* Table reset */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  /* Select dark mode */
+  select option {
+    background-color: #161b22;
+    color: white;
+  }
+}

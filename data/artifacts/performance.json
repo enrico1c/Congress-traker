@@ -1,0 +1,317 @@
+[
+  {
+    "memberId": "P000197",
+    "memberName": "Nancy Pelosi",
+    "memberSlug": "pelosi-nancy",
+    "estimatedReturn1y": 19.66,
+    "estimatedReturn3y": 53.83,
+    "estimatedReturn5y": 82.81,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": -3.64,
+    "excessReturn3y": -14.17,
+    "excessReturn5y": -27.19,
+    "confidence": "high",
+    "badge": "Watchlist",
+    "tradeCount": 51,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "B001289",
+    "memberName": "Mo Brooks",
+    "memberSlug": "brooks-mo",
+    "estimatedReturn1y": 72.47,
+    "estimatedReturn3y": 86.92,
+    "estimatedReturn5y": 111.77,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": 49.17,
+    "excessReturn3y": 18.92,
+    "excessReturn5y": 1.77,
+    "confidence": "high",
+    "badge": "High Outperformance",
+    "tradeCount": 47,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "B000574",
+    "memberName": "Earl Blumenauer",
+    "memberSlug": "blumenauer-earl",
+    "estimatedReturn1y": 36.01,
+    "estimatedReturn3y": 76.86,
+    "estimatedReturn5y": 13.47,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": 12.71,
+    "excessReturn3y": 8.86,
+    "excessReturn5y": -96.53,
+    "confidence": "high",
+    "badge": "Strong Estimated Gains",
+    "tradeCount": 50,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "C001075",
+    "memberName": "Bill Cassidy",
+    "memberSlug": "cassidy-bill",
+    "estimatedReturn1y": 68.84,
+    "estimatedReturn3y": 118.95,
+    "estimatedReturn5y": 110.64,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": 45.54,
+    "excessReturn3y": 50.95,
+    "excessReturn5y": 0.64,
+    "confidence": "high",
+    "badge": "High Outperformance",
+    "tradeCount": 49,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "L000577",
+    "memberName": "Mike Lee",
+    "memberSlug": "lee-mike",
+    "estimatedReturn1y": 35.48,
+    "estimatedReturn3y": 66.51,
+    "estimatedReturn5y": 98.66,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": 12.18,
+    "excessReturn3y": -1.49,
+    "excessReturn5y": -11.34,
+    "confidence": "high",
+    "badge": "Strong Estimated Gains",
+    "tradeCount": 53,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "W000817",
+    "memberName": "Elizabeth Warren",
+    "memberSlug": "warren-elizabeth",
+    "estimatedReturn1y": 37.86,
+    "estimatedReturn3y": 92.05,
+    "estimatedReturn5y": 151.86,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": 14.56,
+    "excessReturn3y": 24.05,
+    "excessReturn5y": 41.86,
+    "confidence": "high",
+    "badge": "Strong Estimated Gains",
+    "tradeCount": 53,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "S001196",
+    "memberName": "Elissa Slotkin",
+    "memberSlug": "slotkin-elissa",
+    "estimatedReturn1y": 2.91,
+    "estimatedReturn3y": 67.09,
+    "estimatedReturn5y": 146.84,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": -20.39,
+    "excessReturn3y": -0.91,
+    "excessReturn5y": 36.84,
+    "confidence": "high",
+    "badge": "Underperforming",
+    "tradeCount": 45,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "G000596",
+    "memberName": "Marjorie Taylor Greene",
+    "memberSlug": "taylor-greene-marjorie",
+    "estimatedReturn1y": 8.91,
+    "estimatedReturn3y": 48.35,
+    "estimatedReturn5y": 134.42,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": -14.39,
+    "excessReturn3y": -19.65,
+    "excessReturn5y": 24.42,
+    "confidence": "high",
+    "badge": "Underperforming",
+    "tradeCount": 60,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "S000250",
+    "memberName": "Pete Sessions",
+    "memberSlug": "sessions-pete",
+    "estimatedReturn1y": 13.68,
+    "estimatedReturn3y": 78.72,
+    "estimatedReturn5y": 89.16,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": -9.62,
+    "excessReturn3y": 10.72,
+    "excessReturn5y": -20.84,
+    "confidence": "high",
+    "badge": "Watchlist",
+    "tradeCount": 51,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "K000394",
+    "memberName": "Andy Kim",
+    "memberSlug": "kim-andy",
+    "estimatedReturn1y": 15.23,
+    "estimatedReturn3y": 90.67,
+    "estimatedReturn5y": 147.13,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": -8.07,
+    "excessReturn3y": 22.67,
+    "excessReturn5y": 37.13,
+    "confidence": "high",
+    "badge": "Watchlist",
+    "tradeCount": 60,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "C001103",
+    "memberName": "Austin Scott",
+    "memberSlug": "scott-austin",
+    "estimatedReturn1y": 5.42,
+    "estimatedReturn3y": 56.2,
+    "estimatedReturn5y": 119.83,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": -17.88,
+    "excessReturn3y": -11.8,
+    "excessReturn5y": 9.83,
+    "confidence": "high",
+    "badge": "Underperforming",
+    "tradeCount": 65,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "D000620",
+    "memberName": "John Delaney",
+    "memberSlug": "delaney-john",
+    "estimatedReturn1y": 33.11,
+    "estimatedReturn3y": 54.88,
+    "estimatedReturn5y": 55.54,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": 9.81,
+    "excessReturn3y": -13.12,
+    "excessReturn5y": -54.46,
+    "confidence": "high",
+    "badge": "Strong Estimated Gains",
+    "tradeCount": 53,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "B001296",
+    "memberName": "Brendan Boyle",
+    "memberSlug": "boyle-brendan",
+    "estimatedReturn1y": 38.71,
+    "estimatedReturn3y": 59.59,
+    "estimatedReturn5y": 158.26,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": 15.41,
+    "excessReturn3y": -8.41,
+    "excessReturn5y": 48.26,
+    "confidence": "high",
+    "badge": "High Outperformance",
+    "tradeCount": 68,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "C001127",
+    "memberName": "Lori Chavez-DeRemer",
+    "memberSlug": "chavez-deremer-lori",
+    "estimatedReturn1y": 11.38,
+    "estimatedReturn3y": 56.66,
+    "estimatedReturn5y": 82.82,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": -11.92,
+    "excessReturn3y": -11.34,
+    "excessReturn5y": -27.18,
+    "confidence": "high",
+    "badge": "Watchlist",
+    "tradeCount": 50,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  },
+  {
+    "memberId": "T000478",
+    "memberName": "Claudia Tenney",
+    "memberSlug": "tenney-claudia",
+    "estimatedReturn1y": 28.37,
+    "estimatedReturn3y": 77.28,
+    "estimatedReturn5y": 68.19,
+    "spReturn1y": 23.3,
+    "spReturn3y": 68.0,
+    "spReturn5y": 110.0,
+    "excessReturn1y": 5.07,
+    "excessReturn3y": 9.28,
+    "excessReturn5y": -41.81,
+    "confidence": "high",
+    "badge": "Strong Estimated Gains",
+    "tradeCount": 45,
+    "methodology": "Weighted buy-and-hold simulation (seed data)",
+    "caveats": [
+      "This is sample data for demonstration purposes only."
+    ]
+  }
+]

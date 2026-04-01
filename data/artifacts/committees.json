@@ -1,0 +1,90 @@
+[
+  {
+    "id": "SSBU",
+    "name": "Senate Budget Committee",
+    "chamber": "Senate",
+    "policyAreas": [
+      "Banking / Financial Services"
+    ]
+  },
+  {
+    "id": "SSSF",
+    "name": "Senate Banking, Housing, and Urban Affairs",
+    "chamber": "Senate",
+    "policyAreas": [
+      "Banking / Financial Services",
+      "Real Estate / Housing"
+    ]
+  },
+  {
+    "id": "SSHR",
+    "name": "Senate HELP Committee",
+    "chamber": "Senate",
+    "policyAreas": [
+      "Healthcare",
+      "Education",
+      "Pharmaceuticals"
+    ]
+  },
+  {
+    "id": "SSAS",
+    "name": "Senate Armed Services Committee",
+    "chamber": "Senate",
+    "policyAreas": [
+      "Defense"
+    ]
+  },
+  {
+    "id": "HSAS",
+    "name": "House Armed Services Committee",
+    "chamber": "House",
+    "policyAreas": [
+      "Defense"
+    ]
+  },
+  {
+    "id": "HSEC",
+    "name": "House Energy and Commerce Committee",
+    "chamber": "House",
+    "policyAreas": [
+      "Energy",
+      "Healthcare",
+      "Telecom / Media",
+      "Technology"
+    ]
+  },
+  {
+    "id": "HSWM",
+    "name": "House Ways and Means Committee",
+    "chamber": "House",
+    "policyAreas": [
+      "Banking / Financial Services",
+      "Judiciary / Regulation"
+    ]
+  },
+  {
+    "id": "HSSF",
+    "name": "House Financial Services Committee",
+    "chamber": "House",
+    "policyAreas": [
+      "Banking / Financial Services"
+    ]
+  },
+  {
+    "id": "HSAG",
+    "name": "House Agriculture Committee",
+    "chamber": "House",
+    "policyAreas": [
+      "Agriculture"
+    ]
+  },
+  {
+    "id": "HSTI",
+    "name": "House Transportation and Infrastructure Committee",
+    "chamber": "House",
+    "policyAreas": [
+      "Transportation",
+      "Environment / Climate"
+    ]
+  }
+]

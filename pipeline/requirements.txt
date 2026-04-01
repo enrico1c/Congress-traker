@@ -1,0 +1,31 @@
+# Core data processing
+pandas>=2.0.0
+numpy>=1.24.0
+requests>=2.31.0
+httpx>=0.26.0
+
+# Market data (no API key required)
+yfinance>=0.2.36
+
+# Data parsing
+lxml>=5.0.0
+beautifulsoup4>=4.12.0
+html5lib>=1.1
+
+# Fuzzy matching for name resolution
+rapidfuzz>=3.5.0
+
+# Database (local SQLite for pipeline state)
+# stdlib sqlite3 — no install needed
+
+# Utilities
+python-dateutil>=2.9.0
+tqdm>=4.66.0
+tenacity>=8.2.0   # retry logic for flaky network calls
+click>=8.1.7       # CLI
+
+# Optional: logging
+colorlog>=6.8.0
+
+# Type checking
+typing_extensions>=4.9.0
