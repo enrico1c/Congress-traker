@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Activity, AlertTriangle, Users, Building2, TrendingUp, Clock } from "lucide-react";
+import { Activity, AlertTriangle, Users, Building2, TrendingUp } from "lucide-react";
 import { getDashboardStats } from "@/lib/data/loader";
 import { StatCard } from "@/components/ui/StatCard";
 import { Card } from "@/components/ui/Card";
@@ -7,12 +7,10 @@ import { Badge } from "@/components/ui/Badge";
 import { TradeTimeline } from "@/components/charts/TradeTimeline";
 import { PolicyAreaChart } from "@/components/charts/PolicyAreaChart";
 import { SectorPieChart } from "@/components/charts/SectorPieChart";
+import { LiveFeed } from "@/components/live/LiveFeed";
 import {
-  formatDate,
-  formatAmountRange,
   partyBgClass,
   partyShort,
-  tradeTypeBgClass,
   badgeColorClass,
   returnColorClass,
   formatReturn,
@@ -30,7 +28,16 @@ export default function DashboardPage() {
         <h1 className="text-2xl font-bold text-white">Congressional Trading Dashboard</h1>
         <p className="mt-1 text-sm text-neutral-500">
           Based on STOCK Act public disclosures from the U.S. House and Senate.
-          Last updated: <span className="text-neutral-400">{formatDate(stats.lastUpdated)}</span>
+          Last updated:{" "}
+          <span className="text-neutral-400">
+            {stats.lastUpdated
+              ? new Date(stats.lastUpdated).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })
+              : "—"}
+          </span>
         </p>
       </div>
 
@@ -59,71 +66,22 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Main grid */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Activity timeline — spans 2 cols */}
-        <Card className="lg:col-span-2" padding="md">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-white">Trade Activity</h2>
-              <p className="text-xs text-neutral-500">Monthly purchases vs sales</p>
-            </div>
-            <Link href="/trades" className="text-xs text-brand-400 hover:text-brand-300">
-              All trades →
-            </Link>
-          </div>
-          <TradeTimeline data={stats.activityTimeline} />
-        </Card>
+      {/* Live feed — Senate EFTS real-time disclosures */}
+      <LiveFeed />
 
-        {/* Latest disclosures */}
-        <Card padding="md">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white">Latest Disclosures</h2>
-            <Clock className="h-3.5 w-3.5 text-neutral-500" />
+      {/* Trade activity timeline — full width */}
+      <Card padding="md">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-white">Trade Activity</h2>
+            <p className="text-xs text-neutral-500">Monthly purchases vs sales (historical)</p>
           </div>
-          <div className="space-y-3">
-            {stats.recentTrades.slice(0, 8).map((trade) => (
-              <div key={trade.id} className="flex items-start gap-2">
-                <Badge className={partyBgClass(trade.memberParty)} size="sm">
-                  {partyShort(trade.memberParty)}
-                </Badge>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <Link
-                      href={`/members/${trade.memberSlug}`}
-                      className="truncate text-xs font-medium text-white hover:text-brand-400"
-                    >
-                      {trade.memberName}
-                    </Link>
-                    <Badge className={tradeTypeBgClass(trade.tradeType)} size="sm">
-                      {trade.tradeType.includes("Purchase") ? "BUY" : "SELL"}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Link
-                      href={`/companies/${trade.ticker}`}
-                      className="text-xs text-brand-400 font-mono hover:text-brand-300"
-                    >
-                      {trade.ticker}
-                    </Link>
-                    <span className="text-xs text-neutral-600">·</span>
-                    <span className="text-xs text-neutral-500">{formatDate(trade.disclosureDate)}</span>
-                  </div>
-                </div>
-                {trade.isFlagged && (
-                  <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 text-red-400" />
-                )}
-              </div>
-            ))}
-          </div>
-          <Link
-            href="/trades"
-            className="mt-4 block text-center text-xs text-neutral-500 hover:text-white"
-          >
-            View all →
+          <Link href="/trades" className="text-xs text-brand-400 hover:text-brand-300">
+            All trades →
           </Link>
-        </Card>
-      </div>
+        </div>
+        <TradeTimeline data={stats.activityTimeline} />
+      </Card>
 
       {/* Second row */}
       <div className="grid gap-6 lg:grid-cols-3">

@@ -20,8 +20,6 @@ for _d in (RAW_DIR, PROCESSED_DIR, ARTIFACTS_DIR):
 CONGRESS_API_KEY   = os.getenv("CONGRESS_API_KEY", "")
 # Alpha Vantage (price data fallback): https://www.alphavantage.co/support/#api-key
 ALPHA_VANTAGE_KEY  = os.getenv("ALPHA_VANTAGE_KEY", "")
-# Quiver Quantitative (NO LONGER FREE — skip unless user provides key)
-QUIVER_API_KEY     = os.getenv("QUIVER_QUANT_API_KEY", "")
 
 # ── Primary data sources (NO KEY REQUIRED) ────────────────────────────────
 
