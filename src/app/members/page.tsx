@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   description: "All tracked members of Congress and their trading activity.",
 };
 
-export const revalidate = parseInt(process.env.NEXT_REVALIDATE_SECONDS ?? "21600");
+export const revalidate = 21600;
 
 export default function MembersPage() {
   const members = getMembers().sort((a, b) => b.tradeCount - a.tradeCount);

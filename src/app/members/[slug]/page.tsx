@@ -27,7 +27,7 @@ import {
 } from "@/lib/utils/formatting";
 import { buildScoringMethodologyText } from "@/lib/utils/scoring";
 
-export const revalidate = parseInt(process.env.NEXT_REVALIDATE_SECONDS ?? "21600");
+export const revalidate = 21600;
 
 export async function generateStaticParams() {
   return getMembers().map((m) => ({ slug: m.slug }));

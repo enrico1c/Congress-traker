@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   description: "Congressional trades flagged for potential policy-area overlap.",
 };
 
-export const revalidate = parseInt(process.env.NEXT_REVALIDATE_SECONDS ?? "21600");
+export const revalidate = 21600;
 
 export default function FlagsPage() {
   const flags = getFlags().sort((a, b) => b.overallScore - a.overallScore);

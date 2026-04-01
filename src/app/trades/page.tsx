@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   description: "Browse and filter all congressional stock trade disclosures.",
 };
 
-export const revalidate = parseInt(process.env.NEXT_REVALIDATE_SECONDS ?? "21600");
+export const revalidate = 21600;
 
 export default function TradesPage() {
   const trades = getTrades();

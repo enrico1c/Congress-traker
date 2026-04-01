@@ -16,7 +16,7 @@ import {
   formatReturn,
 } from "@/lib/utils/formatting";
 
-export const revalidate = parseInt(process.env.NEXT_REVALIDATE_SECONDS ?? "21600");
+export const revalidate = 21600;
 
 export default function DashboardPage() {
   const stats = getDashboardStats();

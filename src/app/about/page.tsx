@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: "How CongressTrades works: data sources, scoring methodology, and limitations.",
 };
 
-export const revalidate = parseInt(process.env.NEXT_REVALIDATE_SECONDS ?? "21600");
+export const revalidate = 21600;
 
 export default function AboutPage() {
   const manifest = getDataManifest();

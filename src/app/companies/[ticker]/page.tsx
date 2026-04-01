@@ -13,7 +13,7 @@ import { TradeTable } from "@/components/trades/TradeTable";
 import { AlertTriangle } from "lucide-react";
 import { formatDate, partyBgClass, partyShort, severityBgClass, severityLabel } from "@/lib/utils/formatting";
 
-export const revalidate = parseInt(process.env.NEXT_REVALIDATE_SECONDS ?? "21600");
+export const revalidate = 21600;
 
 export async function generateStaticParams() {
   return getCompanies().map((c) => ({ ticker: c.ticker }));

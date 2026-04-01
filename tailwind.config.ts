@@ -32,7 +32,6 @@ const config: Config = {
         },
         gain:  "#22c55e",
         loss:  "#ef4444",
-        neutral: "#6b7280",
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],

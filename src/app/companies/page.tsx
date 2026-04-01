@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   description: "All companies traded by members of Congress.",
 };
 
-export const revalidate = parseInt(process.env.NEXT_REVALIDATE_SECONDS ?? "21600");
+export const revalidate = 21600;
 
 export default function CompaniesPage() {
   const companies = getCompanies().sort((a, b) => b.tradeCount - a.tradeCount);

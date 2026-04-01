@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   description: "Members of Congress with the strongest estimated portfolio returns.",
 };
 
-export const revalidate = parseInt(process.env.NEXT_REVALIDATE_SECONDS ?? "21600");
+export const revalidate = 21600;
 
 export default function PerformersPage() {
   const snapshots = getPerformanceSnapshots()
