@@ -31,6 +31,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from pipeline.config import (
     HOUSE_DISCLOSURE_BASE,
     RAW_DIR,
+    ARTIFACTS_DIR,
     REQUEST_TIMEOUT,
     REQUEST_MAX_RETRIES,
     USER_AGENT,
@@ -391,20 +392,21 @@ QUIVER_BROWSER_UA = (
 
 
 def _fetch_via_quiver_all() -> list[dict]:
-    """Fetch Congress trades from QuiverQuantitative's free public API (both chambers)."""
+    """
+    Fetch Congress trades from QuiverQuantitative's free public API (both chambers).
+    Strategy:
+      1. Always try QuiverQuant first (fresh data)
+      2. On 401/connection error (GitHub Actions IPs are sometimes blocked), fall back
+         to the committed cache in data/artifacts/quiver_cache.json
+    """
     import json as _json
-    cache_file = RAW_DIR / "quiver_congress_live.json"
+    cache_file = ARTIFACTS_DIR / "quiver_cache.json"
 
-    if USE_CACHE and cache_file.exists():
-        age_hours = (datetime.now().timestamp() - cache_file.stat().st_mtime) / 3600
-        if age_hours < 20:
-            logger.info("[quiver] Using cached Congress trade data")
-            with open(cache_file) as f:
-                return _json.load(f)
+    transactions = []
+    quiver_ok = False
 
     logger.info("[quiver] Fetching Congress trades from QuiverQuantitative...")
     headers = {"User-Agent": QUIVER_BROWSER_UA, "Accept": "application/json"}
-    transactions = []
     for endpoint in ["live", "bulk"]:
         try:
             url = f"{QUIVER_BASE}/{endpoint}/congresstrading"
@@ -418,22 +420,34 @@ def _fetch_via_quiver_all() -> list[dict]:
                 txn = _normalize_quiver_record(rec)
                 if txn:
                     transactions.append(txn)
+            quiver_ok = True
         except Exception as e:
             logger.warning(f"[quiver] {endpoint} endpoint failed: {e}")
 
-    # Deduplicate
-    seen = set()
-    unique = []
-    for t in transactions:
-        key = (t["member_name"], t["ticker"], t["trade_date"], t["trade_type"])
-        if key not in seen:
-            seen.add(key)
-            unique.append(t)
+    if quiver_ok:
+        # Deduplicate and persist to committed cache
+        seen = set()
+        unique = []
+        for t in transactions:
+            key = (t["member_name"], t["ticker"], t["trade_date"], t["trade_type"])
+            if key not in seen:
+                seen.add(key)
+                unique.append(t)
+        logger.info(f"[quiver] Fetched {len(unique)} unique transactions; updating cache")
+        with open(cache_file, "w") as f:
+            _json.dump(unique, f)
+        return unique
 
-    logger.info(f"[quiver] Total unique transactions: {len(unique)}")
-    with open(cache_file, "w") as f:
-        _json.dump(unique, f)
-    return unique
+    # Fallback: use the committed cache (from last successful run)
+    if cache_file.exists():
+        logger.info("[quiver] QuiverQuant unavailable — using committed cache")
+        with open(cache_file) as f:
+            cached = _json.load(f)
+        logger.info(f"[quiver] Cache has {len(cached)} transactions")
+        return cached
+
+    logger.warning("[quiver] No cache available and QuiverQuant unreachable")
+    return []
 
 
 def _normalize_quiver_record(rec: dict) -> dict | None:
