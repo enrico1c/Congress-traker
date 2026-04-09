@@ -304,7 +304,8 @@ def fetch_all_senate(years_back: int = 5) -> list[dict]:
     from pipeline.config import RAW_DIR, USE_CACHE
 
     # Check if QuiverQuant already fetched everything (house provider caches both chambers)
-    quiver_cache = RAW_DIR / "quiver_congress_live.json"
+    from pipeline.config import ARTIFACTS_DIR
+    quiver_cache = ARTIFACTS_DIR / "quiver_cache.json"
     if USE_CACHE and quiver_cache.exists():
         try:
             with open(quiver_cache) as f:
