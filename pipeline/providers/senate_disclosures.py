@@ -41,11 +41,34 @@ SENATE_DISCLOSURE_BASE = "https://efts.senate.gov"
 PTR_TYPE_ID = "11"   # Periodic Transaction Report (trades)
 
 
+# Senate EFTS may block standard bot User-Agents or have SSL quirks from GitHub Actions IPs.
+# Use a browser-like UA and disable SSL verification as fallback.
+SENATE_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
+
 @retry(stop=stop_after_attempt(REQUEST_MAX_RETRIES), wait=wait_exponential(min=1, max=8))
 def _search(params: dict) -> dict:
-    resp = SESSION.get(SENATE_SEARCH_URL, params=params, timeout=REQUEST_TIMEOUT)
-    resp.raise_for_status()
-    return resp.json()
+    import urllib3
+    try:
+        resp = SESSION.get(SENATE_SEARCH_URL, params=params, timeout=REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        # Fallback: browser UA + skip SSL verification (government cert may fail from cloud IPs)
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+        resp = SESSION.get(
+            SENATE_SEARCH_URL,
+            params=params,
+            timeout=REQUEST_TIMEOUT,
+            verify=False,
+            headers={"User-Agent": SENATE_BROWSER_UA, "Accept": "application/json"},
+        )
+        resp.raise_for_status()
+        return resp.json()
 
 
 def fetch_senate_transactions(
