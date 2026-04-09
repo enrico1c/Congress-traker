@@ -379,14 +379,124 @@ def _normalize_date(raw: str) -> str | None:
     return None
 
 
+
+# QuiverQuantitative provides aggregated Congress trade data as a free public API.
+# We use this as the primary source when the official government ZIP files are blocked.
+QUIVER_BASE = "https://api.quiverquant.com/beta"
+QUIVER_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
+
+def _fetch_via_quiver_all() -> list[dict]:
+    """Fetch Congress trades from QuiverQuantitative's free public API (both chambers)."""
+    import json as _json
+    cache_file = RAW_DIR / "quiver_congress_live.json"
+
+    if USE_CACHE and cache_file.exists():
+        age_hours = (datetime.now().timestamp() - cache_file.stat().st_mtime) / 3600
+        if age_hours < 20:
+            logger.info("[quiver] Using cached Congress trade data")
+            with open(cache_file) as f:
+                return _json.load(f)
+
+    logger.info("[quiver] Fetching Congress trades from QuiverQuantitative...")
+    headers = {"User-Agent": QUIVER_BROWSER_UA, "Accept": "application/json"}
+    transactions = []
+    for endpoint in ["live", "bulk"]:
+        try:
+            url = f"{QUIVER_BASE}/{endpoint}/congresstrading"
+            resp = SESSION.get(url, headers=headers, timeout=60)
+            resp.raise_for_status()
+            records = resp.json()
+            if not isinstance(records, list):
+                continue
+            logger.info(f"[quiver] {endpoint}: {len(records)} records")
+            for rec in records:
+                txn = _normalize_quiver_record(rec)
+                if txn:
+                    transactions.append(txn)
+        except Exception as e:
+            logger.warning(f"[quiver] {endpoint} endpoint failed: {e}")
+
+    # Deduplicate
+    seen = set()
+    unique = []
+    for t in transactions:
+        key = (t["member_name"], t["ticker"], t["trade_date"], t["trade_type"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(t)
+
+    logger.info(f"[quiver] Total unique transactions: {len(unique)}")
+    with open(cache_file, "w") as f:
+        _json.dump(unique, f)
+    return unique
+
+
+def _normalize_quiver_record(rec: dict) -> dict | None:
+    """Normalize a QuiverQuant Congress trade record to the pipeline's standard format."""
+    trade_type_raw = rec.get("Transaction", "")
+    trade_type = _normalize_trade_type(trade_type_raw)
+    if not trade_type:
+        return None
+
+    member_name = (rec.get("Representative") or "").strip()
+    bio_id = rec.get("BioGuideID", "")
+    chamber_raw = rec.get("House", "")
+    ticker = (rec.get("Ticker") or "").strip().upper()
+    tx_date = _normalize_date(rec.get("TransactionDate") or rec.get("ReportDate") or "")
+    disc_date = _normalize_date(rec.get("ReportDate") or "")
+    amount_label = rec.get("Range") or ""
+    amount = _parse_amount(amount_label)
+    asset_type = rec.get("TickerType") or "Stock"
+    source = "senate" if "senate" in chamber_raw.lower() else "house"
+
+    return {
+        "source": source,
+        "member_name": member_name,
+        "member_id": bio_id,
+        "asset_name": rec.get("Description") or ticker,
+        "ticker": ticker,
+        "trade_type": trade_type,
+        "raw_amount": amount_label,
+        "amount_min": amount.get("min"),
+        "amount_max": amount.get("max"),
+        "amount_label": amount.get("label", amount_label),
+        "trade_date": tx_date,
+        "disclosure_date": disc_date,
+        "asset_type": asset_type,
+        "filing_year": int(tx_date[:4]) if tx_date and len(tx_date) >= 4 else datetime.now().year,
+        "source_url": "https://efts.senate.gov/" if source == "senate"
+                      else "https://disclosures.house.gov/",
+    }
+
+
 def fetch_all_house(years_back: int = 5) -> list[dict]:
-    """Fetch House trade data for the past N years."""
+    """
+    Fetch House PTR trade disclosures.
+    Primary:  QuiverQuantitative aggregated API (works from any IP, no key required).
+    Fallback: official disclosures.house.gov ZIP files.
+    Returns ALL records (House + Senate); main.py resolver filters by chamber.
+    """
+    try:
+        all_records = _fetch_via_quiver_all()
+        house_records = [r for r in all_records if r.get("source") == "house"]
+        if house_records:
+            logger.info(f"[house] {len(house_records)} House trades via QuiverQuant")
+            return all_records  # return everything; senate provider will skip if already fetched
+    except Exception as e:
+        logger.warning(f"[house] QuiverQuant failed: {e}")
+
+    # Fallback to official House ZIP files
     current_year = datetime.now().year
     all_txns = []
     for year in range(current_year - years_back, current_year + 1):
-        logger.info(f"[house] Fetching year {year}…")
+        logger.info(f"[house] Fetching year {year}...")
         txns = fetch_house_transactions(year)
         all_txns.extend(txns)
-        time.sleep(0.5)  # polite delay
+        time.sleep(0.5)
     logger.info(f"[house] Total raw transactions: {len(all_txns)}")
     return all_txns
