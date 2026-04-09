@@ -6,6 +6,9 @@ on:
     - cron: "0 6 * * *"
   workflow_dispatch:  # Allow manual trigger
 
+permissions:
+  contents: write
+
 jobs:
   update-data:
     runs-on: ubuntu-latest
@@ -46,9 +49,7 @@ jobs:
           git diff --staged --quiet || git commit -m "chore: update trade data [$(date -u '+%Y-%m-%d')]"
 
       - name: Push changes
-        uses: ad-m/github-push-action@master
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+        run: git push origin main
 
       - name: Trigger Vercel deployment
         if: success()
