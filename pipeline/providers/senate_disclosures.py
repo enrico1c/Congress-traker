@@ -294,7 +294,29 @@ def _normalize_date(raw: str) -> str | None:
 
 
 def fetch_all_senate(years_back: int = 5) -> list[dict]:
-    """Fetch Senate trade data for the past N years."""
+    """
+    Fetch Senate trade disclosures.
+    If QuiverQuant already fetched all data in house_disclosures.fetch_all_house(),
+    the senate cache file will contain Senate records — return those directly.
+    Fallback: Senate EFTS API (may be blocked from cloud IPs).
+    """
+    import json as _json
+    from pipeline.config import RAW_DIR, USE_CACHE
+
+    # Check if QuiverQuant already fetched everything (house provider caches both chambers)
+    quiver_cache = RAW_DIR / "quiver_congress_live.json"
+    if USE_CACHE and quiver_cache.exists():
+        try:
+            with open(quiver_cache) as f:
+                all_records = _json.load(f)
+            senate_records = [r for r in all_records if r.get("source") == "senate"]
+            if senate_records:
+                logger.info(f"[senate] Using {len(senate_records)} Senate trades from QuiverQuant cache")
+                return senate_records
+        except Exception:
+            pass
+
+    # Fallback: Senate EFTS API
     from_date = (datetime.now() - timedelta(days=years_back * 365)).strftime("%Y-%m-%d")
     to_date   = datetime.now().strftime("%Y-%m-%d")
     return fetch_senate_transactions(from_date, to_date)
