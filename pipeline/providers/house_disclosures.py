@@ -122,9 +122,11 @@ def _fetch_via_zip(year: int) -> list[dict]:
     (This URL was valid as of 2024; if changed, the search fallback will be used.)
     """
     # Multiple known URL patterns — try each
+    # PTR = Periodic Transaction Reports (STOCK Act); financial-pdfs = Annual FD (not trades)
     zip_url_patterns = [
+        f"https://disclosures.house.gov/public_disc/ptr-pdfs/{year}/{year}FD.zip",
+        f"https://disclosures.house.gov/public_disc/ptr-pdfs/{year}/{year}FD.ZIP",
         f"https://disclosures.house.gov/public_disc/financial-pdfs/{year}FD.zip",
-        f"https://disclosures.house.gov/FinancialDisclosure/PressSummary?year={year}",
     ]
 
     raw_dir = RAW_DIR / "house_zips"
