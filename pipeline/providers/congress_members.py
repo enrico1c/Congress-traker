@@ -200,7 +200,7 @@ def normalize_committees(raw_committees: list[dict], membership: dict) -> list[d
         if committee_id in membership:
             for member_rec in membership[committee_id]:
                 if isinstance(member_rec, dict):
-                    bioguide = member_rec.get("bioguide_id", "")
+                    bioguide = member_rec.get("bioguide", "") or member_rec.get("bioguide_id", "")
                     if bioguide:
                         member_ids.append(bioguide)
 
@@ -220,7 +220,7 @@ def normalize_committees(raw_committees: list[dict], membership: dict) -> list[d
             if sub_id in membership:
                 for rec in membership[sub_id]:
                     if isinstance(rec, dict):
-                        bg = rec.get("bioguide_id", "")
+                        bg = rec.get("bioguide", "") or rec.get("bioguide_id", "")
                         if bg:
                             sub_members.append(bg)
 
