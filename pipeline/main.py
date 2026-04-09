@@ -258,12 +258,13 @@ def _run_process():
     canonical_companies = []
     for tk, ci in company_info_map.items():
         counts = company_trade_counts.get(tk, {})
+        sector = ci.get("sector", "Unknown")
         canonical_companies.append({
             "ticker":           tk,
             "name":             ci.get("name", tk),
-            "sector":           ci.get("sector", "Unknown"),
+            "sector":           sector,
             "industry":         ci.get("industry", "Unknown"),
-            "policyAreas":      ci.get("policy_areas", []),
+            "policy_areas":     SECTOR_TO_POLICY_AREAS.get(sector, []),
             "marketCap":        ci.get("market_cap"),
             "tradeCount":       counts.get("tradeCount", 0),
             "flaggedTradeCount": 0,  # updated after scoring
