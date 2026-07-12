@@ -17,14 +17,18 @@ block rather than a TLS or User-Agent fingerprint issue, so a cheap
 heavier Playwright flow would succeed too — a genuinely-blocked run skips
 installing/launching a browser entirely.
 
-If the network is ever unblocked (a different CI runner range, a proxy,
-etc.), fetch_all_senate()'s Playwright flow should start working with no
-further changes — it follows efdsearch's well-documented public structure
-(agree to the terms checkbox, search Periodic Transaction Reports, open
-each report's transaction table) using Playwright's semantic locators
-rather than guessed hidden field names. It could not be verified
-end-to-end, though, since every attempt from this project's environments
-has been blocked at the very first request — treat it as best-effort.
+Turns out GitHub Actions' own runner network reaches this site fine (only
+this project's dev environments were blocked) — a real run got past the
+reachability probe and captured a screenshot + HTML dump of the actual
+search form (data/artifacts/_debug/, see _dump_debug_artifacts), which is
+how the selectors below were verified: no "agree to terms" gate exists on
+this form at all (an earlier version of this flow assumed one and got
+stuck on it); the Periodic Transactions checkbox has a non-unique id
+("reportTypes" repeated on every checkbox in the group — invalid HTML,
+but real), so it's selected by its name+value pair instead
+(input[name='report_type'][value='11']); and the date fields are
+input#fromDate/#toDate — their name attributes (submitted_start_date/
+submitted_end_date) are not fromDate/toDate as an earlier guess assumed.
 """
 import logging
 import re
@@ -78,8 +82,12 @@ def fetch_all_senate(years_back: int = 5, max_reports: int = 200) -> list[dict]:
         return []
 
 
-QCHECKBOX_SEL = "input[type='checkbox']"
-QSUBMIT_SEL = "button[type='submit'], input[type='submit']"
+# Verified against a real captured page (see module docstring) — the
+# Periodic Transactions checkbox has report_type value 11 (confirmed live
+# from the form's own HTML), and its id is duplicated across every
+# checkbox in the Report Types group so it can't be selected by id/label.
+QPTR_CHECKBOX_SEL = "input[name='report_type'][value='11']"
+QSUBMIT_SEL = "button[type='submit']"
 
 
 def _dump_debug_artifacts(page, label: str) -> None:
@@ -110,22 +118,16 @@ def _fetch_via_efdsearch_playwright(years_back: int, max_reports: int) -> list[d
 
         try:
             page.goto(EFDSEARCH_HOME_URL, timeout=30000)
-            # Positional/type-based selectors, not label text — this flow was
-            # never verified against a live page (efdsearch.senate.gov was
-            # blocked from every dev environment used to write this; see
-            # module docstring), so this avoids guessing exact copy that
-            # a first live run already showed was wrong (the label-text
-            # checkbox selector timed out — see the debug dump below for
-            # what the real page actually contains).
-            page.locator(QCHECKBOX_SEL).first.check(timeout=15000)
-            page.locator(QSUBMIT_SEL).first.click(timeout=15000)
+            # No "agree to terms" gate exists on this form (an earlier version
+            # of this flow assumed one and got stuck checking the wrong box —
+            # the "Senator" filer-type checkbox — then submitting an empty
+            # search). Report Type + date range alone satisfy the site's
+            # "at least one search option" requirement.
+            page.locator(QPTR_CHECKBOX_SEL).check(timeout=15000)
+            page.fill("#fromDate", from_date)
+            page.fill("#toDate", to_date)
+            page.locator(QSUBMIT_SEL).click(timeout=15000)
             page.wait_for_load_state("networkidle", timeout=30000)
-
-            # Restrict to Periodic Transaction Reports over the requested date range.
-            page.get_by_label(re.compile("periodic transaction report", re.I)).check(timeout=15000)
-            page.fill("input[name='fromDate']", from_date)
-            page.fill("input[name='toDate']", to_date)
-            page.locator(QSUBMIT_SEL).first.click(timeout=15000)
             page.wait_for_selector("table tbody tr", timeout=30000)
         except Exception as e:
             # Couldn't verify this flow live before shipping it (see module
