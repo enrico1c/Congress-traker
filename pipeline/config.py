@@ -22,25 +22,15 @@ CONGRESS_API_KEY   = os.getenv("CONGRESS_API_KEY", "")
 ALPHA_VANTAGE_KEY  = os.getenv("ALPHA_VANTAGE_KEY", "")
 
 # ── Primary data sources (NO KEY REQUIRED) ────────────────────────────────
-
-# House STOCK Act Periodic Transaction Reports
-# Official downloadable ZIP files per year — absolutely no key needed
-HOUSE_DISCLOSURE_BASE   = "https://disclosures.house.gov"
-HOUSE_DISCLOSURE_SEARCH = "https://disclosures.house.gov/FinancialDisclosure/ViewMemberSearchResult"
-# Annual data file pattern (XML per member, or summary CSV):
-# https://disclosures.house.gov/FinancialDisclosure/PressSummary?year=YYYY
-HOUSE_DATA_URL_TEMPLATE = "https://disclosures.house.gov/FinancialDisclosure/PressSummary?year={year}"
-
-# Senate EFTS — public JSON API, no key
-SENATE_EFTS_BASE = "https://efts.senate.gov/LATEST/search-index"
-SENATE_EFTS_PARAMS = {
-    "q": "",
-    "dateRange": "custom",
-    "fromDate": "2012-01-01",
-    "toDate":   "",   # filled at runtime
-    "pageSize": 100,
-    "offset":   0,
-}
+# House PTRs: see pipeline/providers/house_disclosures.py's module docstring
+# for source URLs and why they live there instead of here — the old
+# disclosures.house.gov domain now redirects to an unrelated Lobbying
+# Disclosure system, and the real replacement (disclosures-clerk.house.gov)
+# only serves per-filer PDFs, not a bulk endpoint worth hardcoding as config.
+#
+# Senate PTRs: see pipeline/providers/senate_disclosures.py's module
+# docstring — the old efts.senate.gov domain no longer resolves at all;
+# the real replacement (efdsearch.senate.gov) is Akamai-protected.
 
 # unitedstates/congress — public GitHub raw JSON (public domain data)
 UNITEDSTATES_MEMBERS_URL   = "https://unitedstates.github.io/congress-legislators/legislators-current.json"

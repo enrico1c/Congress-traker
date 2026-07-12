@@ -1,35 +1,33 @@
 """
 House STOCK Act Periodic Transaction Report (PTR) provider.
 
-Primary source: https://disclosures.house.gov/
+Primary source: github.com/TattooedHead/house-stock-watcher-data
 - No API key required
-- Provides downloadable ZIP archives containing XML files per disclosure
-- Official U.S. House of Representatives data
+- Free, actively-maintained GitHub mirror that already parses individual
+  House PTR PDFs (disclosures-clerk.house.gov/public_disc/ptr-pdfs/) into
+  structured per-transaction JSON — verified live and current as of
+  2026-07-11.
+- Chosen over scraping the government PDFs ourselves: the real annual ZIP
+  at disclosures-clerk.house.gov/public_disc/financial-pdfs/{year}FD.zip
+  (the previous domain, disclosures.house.gov, now redirects to an
+  unrelated Lobbying Disclosure system) only contains a filer *index*
+  (name/filing-type/DocID), not transaction line items — actual PTR trades
+  are one PDF per filing, needing real per-document table parsing that
+  doesn't exist anywhere in this pipeline. Reusing an already-solved mirror
+  is simpler and fresher than building that from scratch.
 
-Data structure:
-  Each year has a ZIP file at:
-    https://disclosures.house.gov/FinancialDisclosure/PressSummary?year=YYYY
-  Inside: one XML file per filer containing their transactions.
-
-Fallback:
-  If ZIP fetch fails, try the searchable form with a date range.
+Fallback: QuiverQuantitative (requires QUIVER_API_KEY as of 2026 — its
+live/bulk endpoints now return 401 without one; kept in case a key is ever
+configured).
 """
-import io
 import re
-import time
-import zipfile
 import logging
-import sqlite3
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Iterator
-import xml.etree.ElementTree as ET
+from datetime import datetime
 
 import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from pipeline.config import (
-    HOUSE_DISCLOSURE_BASE,
     RAW_DIR,
     ARTIFACTS_DIR,
     REQUEST_TIMEOUT,
@@ -45,23 +43,9 @@ logger = logging.getLogger(__name__)
 SESSION = requests.Session()
 SESSION.headers.update({"User-Agent": USER_AGENT})
 
-# PTR (Periodic Transaction Reports) data — these are the individual trade disclosures
-# The House provides an annual summary and per-member XML files
-HOUSE_PTR_INDEX_URL = "{base}/FinancialDisclosure/ViewMemberSearchResult"
-HOUSE_PTR_DOWNLOAD_URL = "{base}/FinancialDisclosure/PressSummary?year={year}"
-
-# The actual downloadable data for a given year
-# Pattern: https://disclosures.house.gov/public_disc/ptr-pdfs/{year}/
-HOUSE_PTR_DATA_BASE = "https://disclosures.house.gov/public_disc/ptr-pdfs"
-
-# For bulk XML transaction data the House provides this endpoint:
-# https://disclosures.house.gov/FinancialDisclosure/PressSummary → links per year
-# Individual member XML: https://disclosures.house.gov/FinancialDisclosure/ViewDoc/...
-
-# Alternative: the House Clerk API for a paginated transaction listing
-HOUSE_TRANSACTIONS_URL = (
-    "https://disclosures.house.gov/FinancialDisclosure/ViewMemberSearchResult"
-    "?dateOfHearingFrom={from_date}&dateOfHearingTo={to_date}&filedReportType=1"
+HOUSE_WATCHER_MIRROR_URL = (
+    "https://raw.githubusercontent.com/TattooedHead/house-stock-watcher-data"
+    "/main/data/all_transactions.json"
 )
 
 
@@ -72,263 +56,43 @@ def _get(url: str, **kwargs) -> requests.Response:
     return resp
 
 
-def fetch_house_transactions(year: int) -> list[dict]:
-    """
-    Fetch all House PTR transactions for a given year.
+def _fetch_via_house_watcher_mirror(years_back: int) -> list[dict]:
+    """Fetch + normalize the house-stock-watcher-data mirror's flat transaction list."""
+    resp = _get(HOUSE_WATCHER_MIRROR_URL)
+    records = resp.json()
+    if not isinstance(records, list):
+        raise ValueError("Unexpected mirror response shape (expected a JSON list)")
 
-    Strategy:
-      1. Try to download the annual ZIP archive from disclosures.house.gov
-      2. Parse XML files within the ZIP
-      3. If ZIP unavailable, fall back to HTML scraping of search results
-
-    Returns list of raw transaction dicts (pre-normalization).
-    """
-    cache_file = RAW_DIR / f"house_ptr_{year}.json"
-
-    if USE_CACHE and cache_file.exists():
-        import json
-        logger.info(f"[house] Using cached data for {year}")
-        with open(cache_file) as f:
-            return json.load(f)
-
-    transactions = []
-
-    # Strategy 1: Try the known ZIP URL pattern for annual data
-    try:
-        transactions = _fetch_via_zip(year)
-        logger.info(f"[house] Fetched {len(transactions)} transactions for {year} via ZIP")
-    except Exception as e:
-        logger.warning(f"[house] ZIP fetch failed for {year}: {e}")
-
-    # Strategy 2: If ZIP failed or returned nothing, try the search form scraper
-    if not transactions:
-        try:
-            transactions = _fetch_via_search(year)
-            logger.info(f"[house] Fetched {len(transactions)} transactions for {year} via search")
-        except Exception as e:
-            logger.error(f"[house] Search fetch also failed for {year}: {e}")
-
-    if transactions:
-        import json
-        with open(cache_file, "w") as f:
-            json.dump(transactions, f)
-
-    return transactions
-
-
-def _fetch_via_zip(year: int) -> list[dict]:
-    """
-    Download the annual House disclosure ZIP and extract XML transaction records.
-    ZIP URL pattern: https://disclosures.house.gov/public_disc/financial-pdfs/{year}FD.zip
-    (This URL was valid as of 2024; if changed, the search fallback will be used.)
-    """
-    # Multiple known URL patterns — try each
-    # PTR = Periodic Transaction Reports (STOCK Act); financial-pdfs = Annual FD (not trades)
-    zip_url_patterns = [
-        f"https://disclosures.house.gov/public_disc/ptr-pdfs/{year}/{year}FD.zip",
-        f"https://disclosures.house.gov/public_disc/ptr-pdfs/{year}/{year}FD.ZIP",
-        f"https://disclosures.house.gov/public_disc/financial-pdfs/{year}FD.zip",
-    ]
-
-    raw_dir = RAW_DIR / "house_zips"
-    raw_dir.mkdir(exist_ok=True)
-    local_zip = raw_dir / f"{year}FD.zip"
-
-    zip_data = None
-
-    for url in zip_url_patterns:
-        try:
-            logger.info(f"[house] Trying ZIP at {url}")
-            resp = SESSION.get(url, timeout=60, stream=True)
-            if resp.status_code == 200 and "application/zip" in resp.headers.get("Content-Type", ""):
-                zip_data = resp.content
-                with open(local_zip, "wb") as f:
-                    f.write(zip_data)
-                break
-            elif resp.status_code == 200 and local_zip.exists():
-                # URL may redirect to HTML — try local cache
-                break
-        except Exception as e:
-            logger.debug(f"[house] ZIP URL {url} failed: {e}")
+    cutoff_year = datetime.now().year - years_back
+    out = []
+    for r in records:
+        trade_type = _normalize_trade_type(r.get("type", ""))
+        if not trade_type:
             continue
-
-    if not zip_data and local_zip.exists():
-        logger.info(f"[house] Reading local ZIP cache for {year}")
-        with open(local_zip, "rb") as f:
-            zip_data = f.read()
-
-    if not zip_data:
-        raise ValueError(f"Could not download ZIP for year {year}")
-
-    return _parse_house_zip(zip_data, year)
-
-
-def _parse_house_zip(zip_data: bytes, year: int) -> list[dict]:
-    """Parse XML files within the House annual disclosure ZIP."""
-    transactions = []
-
-    try:
-        with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
-            xml_files = [n for n in zf.namelist() if n.endswith(".xml")]
-            logger.info(f"[house] ZIP contains {len(xml_files)} XML files for {year}")
-
-            for fname in xml_files:
-                try:
-                    xml_bytes = zf.read(fname)
-                    txns = _parse_house_xml(xml_bytes, year)
-                    transactions.extend(txns)
-                except Exception as e:
-                    logger.debug(f"[house] Failed to parse {fname}: {e}")
-    except Exception as e:
-        raise ValueError(f"Could not parse ZIP: {e}")
-
-    return transactions
-
-
-def _parse_house_xml(xml_bytes: bytes, year: int) -> list[dict]:
-    """
-    Parse a single House member XML disclosure file.
-    The XML structure varies by year; this handles the common formats.
-    """
-    transactions = []
-
-    try:
-        root = ET.fromstring(xml_bytes)
-        ns = {"": ""}  # no namespace in most files
-
-        # Extract filer info
-        member_name = ""
-        member_id = ""
-
-        for tag in ["FilingFilerName", "MemberName", "FilerLastName"]:
-            el = root.find(f".//{tag}")
-            if el is not None and el.text:
-                member_name = el.text.strip()
-                break
-
-        for tag in ["FilingID", "MemberID", "DocID"]:
-            el = root.find(f".//{tag}")
-            if el is not None and el.text:
-                member_id = el.text.strip()
-                break
-
-        # Find transaction elements
-        for tx_el in root.findall(".//Transaction") or root.findall(".//PeriodicTransaction"):
-            txn = _parse_transaction_element(tx_el, member_name, member_id, year)
-            if txn:
-                transactions.append(txn)
-
-    except ET.ParseError as e:
-        logger.debug(f"[house] XML parse error: {e}")
-
-    return transactions
-
-
-def _parse_transaction_element(el: ET.Element, member_name: str, member_id: str, year: int) -> dict | None:
-    """Extract fields from a single <Transaction> XML element."""
-    def get(tag: str) -> str:
-        child = el.find(tag)
-        return (child.text or "").strip() if child is not None else ""
-
-    asset = get("AssetName") or get("Asset") or get("Description")
-    ticker = get("Ticker") or get("Symbol") or ""
-    trade_type = get("Type") or get("TransactionType") or ""
-    amount_code = get("Amount") or get("TransactionAmount") or ""
-    tx_date = get("TransactionDate") or get("Date") or ""
-    notify_date = get("NotificationDate") or get("DateDisclosed") or ""
-
-    # Skip non-stock assets
-    asset_type = get("AssetType") or "Stock"
-    if any(x in asset_type.lower() for x in ["bond", "fund", "401k", "ira", "pension", "real property"]):
-        # Keep ETFs and mutual funds that might have policy overlap significance
-        if "etf" not in asset_type.lower() and "fund" not in asset_type.lower():
-            pass  # include everything for now; filter later
-
-    # Normalize trade type
-    trade_type_norm = _normalize_trade_type(trade_type)
-    if not trade_type_norm:
-        return None  # Skip transfers, etc.
-
-    # Parse amount
-    amount = _parse_amount(amount_code)
-
-    return {
-        "source": "house",
-        "member_name": member_name,
-        "member_id": member_id,
-        "asset_name": asset,
-        "ticker": ticker.upper() if ticker else "",
-        "trade_type": trade_type_norm,
-        "raw_amount": amount_code,
-        "amount_min": amount.get("min"),
-        "amount_max": amount.get("max"),
-        "amount_label": amount.get("label", amount_code),
-        "trade_date": _normalize_date(tx_date),
-        "disclosure_date": _normalize_date(notify_date),
-        "asset_type": asset_type or "Stock",
-        "filing_year": year,
-        "source_url": HOUSE_DISCLOSURE_BASE + "/FinancialDisclosure",
-    }
-
-
-def _fetch_via_search(year: int) -> list[dict]:
-    """
-    Fallback: scrape the House search results page for a given year.
-    Returns minimal data — mainly used when ZIP is unavailable.
-    """
-    from datetime import date
-    logger.info(f"[house] Trying search scraper for {year}")
-    transactions = []
-
-    from_date = f"{year}-01-01"
-    to_date   = f"{year}-12-31"
-
-    url = (
-        f"{HOUSE_DISCLOSURE_BASE}/FinancialDisclosure/ViewMemberSearchResult"
-        f"?dateOfHearingFrom={from_date}&dateOfHearingTo={to_date}&filedReportType=1"
-    )
-
-    try:
-        from bs4 import BeautifulSoup
-        resp = SESSION.get(url, timeout=REQUEST_TIMEOUT)
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        # Parse search result table
-        table = soup.find("table", {"id": "DataTables_Table_0"}) or soup.find("table")
-        if not table:
-            return []
-
-        rows = table.find_all("tr")[1:]  # skip header
-        for row in rows:
-            cells = row.find_all("td")
-            if len(cells) < 4:
-                continue
-            # Typical columns: Name | Office | Year | Filing
-            name = cells[0].get_text(strip=True)
-            # Get detail link
-            link_el = cells[0].find("a") or cells[-1].find("a")
-            detail_url = ""
-            if link_el and link_el.get("href"):
-                detail_url = HOUSE_DISCLOSURE_BASE + link_el["href"]
-
-            transactions.append({
-                "source": "house_search",
-                "member_name": name,
-                "filing_year": year,
-                "source_url": detail_url or url,
-                # Minimal data — will need detail fetch
-                "ticker": "",
-                "trade_type": "Unknown",
-                "amount_min": None,
-                "amount_max": None,
-                "amount_label": "Unknown",
-                "trade_date": None,
-                "disclosure_date": None,
-            })
-    except Exception as e:
-        logger.error(f"[house] Search scraper failed: {e}")
-
-    return transactions
+        trade_date = _normalize_date(r.get("transaction_date", ""))
+        filing_year = int(trade_date[:4]) if trade_date else datetime.now().year
+        if filing_year < cutoff_year:
+            continue
+        amount_label = r.get("amount") or ""
+        amount = _parse_amount(amount_label)
+        out.append({
+            "source": "house",
+            "member_name": r.get("representative", ""),
+            "member_id": r.get("filing_id", ""),
+            "asset_name": r.get("asset_description", "") or r.get("ticker", ""),
+            "ticker": (r.get("ticker") or "").strip().upper(),
+            "trade_type": trade_type,
+            "raw_amount": amount_label,
+            "amount_min": amount.get("min"),
+            "amount_max": amount.get("max"),
+            "amount_label": amount.get("label", amount_label),
+            "trade_date": trade_date,
+            "disclosure_date": _normalize_date(r.get("disclosure_date", "")),
+            "asset_type": r.get("asset_type") or "Stock",
+            "filing_year": filing_year,
+            "source_url": r.get("source_url") or "https://disclosures-clerk.house.gov/",
+        })
+    return out
 
 
 def _normalize_trade_type(raw: str) -> str | None:
@@ -380,9 +144,8 @@ def _normalize_date(raw: str) -> str | None:
     return None
 
 
-
-# QuiverQuantitative provides aggregated Congress trade data as a free public API.
-# We use this as the primary source when the official government ZIP files are blocked.
+# QuiverQuantitative — kept as a secondary fallback in case QUIVER_API_KEY is
+# ever configured (its live/bulk endpoints now require auth; see fetch_all_house).
 QUIVER_BASE = "https://api.quiverquant.com/beta"
 QUIVER_BROWSER_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -393,15 +156,15 @@ QUIVER_BROWSER_UA = (
 
 def _fetch_via_quiver_all() -> list[dict]:
     """
-    Fetch Congress trades from QuiverQuantitative's free public API (both chambers).
-    Strategy:
-      1. Always try QuiverQuant first (fresh data)
-      2. On 401/connection error (GitHub Actions IPs are sometimes blocked), fall back
-         to the committed cache in data/artifacts/quiver_cache.json
+    Fetch Congress trades from QuiverQuantitative's API (both chambers).
+    Returns [] on any failure — callers fall through to their next source.
+    Does NOT fall back to a committed cache file here: doing so previously
+    made a total QuiverQuant failure look identical to a successful fetch
+    (same return shape, no exception), so callers kept re-serving a
+    months-stale cache as if it were fresh instead of trying their real
+    fallback. Last-resort stale-cache use, if ever wanted again, belongs in
+    the caller where it can be logged honestly as "stale", not masked here.
     """
-    import json as _json
-    cache_file = ARTIFACTS_DIR / "quiver_cache.json"
-
     transactions = []
     quiver_ok = False
 
@@ -424,30 +187,18 @@ def _fetch_via_quiver_all() -> list[dict]:
         except Exception as e:
             logger.warning(f"[quiver] {endpoint} endpoint failed: {e}")
 
-    if quiver_ok:
-        # Deduplicate and persist to committed cache
-        seen = set()
-        unique = []
-        for t in transactions:
-            key = (t["member_name"], t["ticker"], t["trade_date"], t["trade_type"])
-            if key not in seen:
-                seen.add(key)
-                unique.append(t)
-        logger.info(f"[quiver] Fetched {len(unique)} unique transactions; updating cache")
-        with open(cache_file, "w") as f:
-            _json.dump(unique, f)
-        return unique
+    if not quiver_ok:
+        return []
 
-    # Fallback: use the committed cache (from last successful run)
-    if cache_file.exists():
-        logger.info("[quiver] QuiverQuant unavailable — using committed cache")
-        with open(cache_file) as f:
-            cached = _json.load(f)
-        logger.info(f"[quiver] Cache has {len(cached)} transactions")
-        return cached
-
-    logger.warning("[quiver] No cache available and QuiverQuant unreachable")
-    return []
+    seen = set()
+    unique = []
+    for t in transactions:
+        key = (t["member_name"], t["ticker"], t["trade_date"], t["trade_type"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(t)
+    logger.info(f"[quiver] Fetched {len(unique)} unique transactions")
+    return unique
 
 
 def _normalize_quiver_record(rec: dict) -> dict | None:
@@ -483,34 +234,35 @@ def _normalize_quiver_record(rec: dict) -> dict | None:
         "disclosure_date": disc_date,
         "asset_type": asset_type,
         "filing_year": int(tx_date[:4]) if tx_date and len(tx_date) >= 4 else datetime.now().year,
-        "source_url": "https://efts.senate.gov/" if source == "senate"
-                      else "https://disclosures.house.gov/",
+        "source_url": "https://efdsearch.senate.gov/" if source == "senate"
+                      else "https://disclosures-clerk.house.gov/",
     }
 
 
 def fetch_all_house(years_back: int = 5) -> list[dict]:
     """
     Fetch House PTR trade disclosures.
-    Primary:  QuiverQuantitative aggregated API (works from any IP, no key required).
-    Fallback: official disclosures.house.gov ZIP files.
-    Returns ALL records (House + Senate); main.py resolver filters by chamber.
+    Primary:   house-stock-watcher-data mirror (free, keyless, verified fresh).
+    Fallback:  QuiverQuantitative (needs QUIVER_API_KEY).
+    Returns ALL records (House + Senate) when sourced via QuiverQuant, since
+    that API mixes both chambers; main.py's resolver filters by chamber.
     """
+    try:
+        records = _fetch_via_house_watcher_mirror(years_back)
+        if records:
+            logger.info(f"[house] {len(records)} House trades via house-stock-watcher-data mirror")
+            return records
+    except Exception as e:
+        logger.warning(f"[house] house-stock-watcher-data mirror failed: {e}")
+
     try:
         all_records = _fetch_via_quiver_all()
         house_records = [r for r in all_records if r.get("source") == "house"]
         if house_records:
             logger.info(f"[house] {len(house_records)} House trades via QuiverQuant")
-            return all_records  # return everything; senate provider will skip if already fetched
+            return all_records
     except Exception as e:
         logger.warning(f"[house] QuiverQuant failed: {e}")
 
-    # Fallback to official House ZIP files
-    current_year = datetime.now().year
-    all_txns = []
-    for year in range(current_year - years_back, current_year + 1):
-        logger.info(f"[house] Fetching year {year}...")
-        txns = fetch_house_transactions(year)
-        all_txns.extend(txns)
-        time.sleep(0.5)
-    logger.info(f"[house] Total raw transactions: {len(all_txns)}")
-    return all_txns
+    logger.error("[house] All House data sources failed — no House data fetched this run")
+    return []

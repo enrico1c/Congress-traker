@@ -1,228 +1,197 @@
 """
-Senate EFTS (Electronic Filing & Tracking System) provider.
+Senate periodic transaction report (PTR) provider.
 
-Primary source: https://efts.senate.gov/LATEST/search-index
-- NO API key required
-- Public JSON REST API with pagination
-- Returns structured trade disclosure data
+Primary source: https://efdsearch.senate.gov/ (Electronic Financial
+Disclosure search) — the old efts.senate.gov domain this file previously
+used no longer resolves at all (NXDOMAIN, confirmed independent of this
+project's network). efdsearch.senate.gov is the real, current domain.
 
-Documentation: https://efts.senate.gov/
+That domain is protected by Akamai bot-management that returns an
+unconditional 403 to this pipeline's usual hosting network — verified
+identically via plain requests AND a real headless-Chromium browser
+(Playwright), both blocked before ever reaching the search page with the
+same generic WAF page (not a bot challenge/CAPTCHA, which is what a
+fingerprint-based check would show). That points to an IP/network-range
+block rather than a TLS or User-Agent fingerprint issue, so a cheap
+`requests` reachability probe below is a valid proxy for whether the
+heavier Playwright flow would succeed too — a genuinely-blocked run skips
+installing/launching a browser entirely.
+
+If the network is ever unblocked (a different CI runner range, a proxy,
+etc.), fetch_all_senate()'s Playwright flow should start working with no
+further changes — it follows efdsearch's well-documented public structure
+(agree to the terms checkbox, search Periodic Transaction Reports, open
+each report's transaction table) using Playwright's semantic locators
+rather than guessed hidden field names. It could not be verified
+end-to-end, though, since every attempt from this project's environments
+has been blocked at the very first request — treat it as best-effort.
 """
-import json
 import logging
-import time
+import re
 from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Iterator
 
 import requests
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from pipeline.config import (
-    SENATE_EFTS_BASE,
-    RAW_DIR,
     REQUEST_TIMEOUT,
-    REQUEST_MAX_RETRIES,
-    USER_AGENT,
     AMOUNT_RANGES,
-    USE_CACHE,
-    YEARS_BACK,
 )
 
 logger = logging.getLogger(__name__)
 
 SESSION = requests.Session()
-SESSION.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
 
-SENATE_SEARCH_URL = "https://efts.senate.gov/LATEST/search-index"
-SENATE_DISCLOSURE_BASE = "https://efts.senate.gov"
+EFDSEARCH_BASE = "https://efdsearch.senate.gov"
+EFDSEARCH_HOME_URL = f"{EFDSEARCH_BASE}/search/home/"
 
-# Transaction report type IDs used by Senate EFTS
-PTR_TYPE_ID = "11"   # Periodic Transaction Report (trades)
-
-
-# Senate EFTS may block standard bot User-Agents or have SSL quirks from GitHub Actions IPs.
-# Use a browser-like UA and disable SSL verification as fallback.
+# efdsearch may block standard bot User-Agents; use a browser-like UA.
 SENATE_BROWSER_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/124.0.0.0 Safari/537.36"
 )
+SESSION.headers.update({"User-Agent": SENATE_BROWSER_UA, "Accept": "text/html"})
 
 
-@retry(stop=stop_after_attempt(REQUEST_MAX_RETRIES), wait=wait_exponential(min=1, max=8))
-def _search(params: dict) -> dict:
-    import urllib3
+def fetch_all_senate(years_back: int = 5, max_reports: int = 200) -> list[dict]:
+    """
+    Fetch Senate PTR trade disclosures. See module docstring for why this
+    probes reachability first instead of launching Playwright unconditionally.
+    """
     try:
-        resp = SESSION.get(SENATE_SEARCH_URL, params=params, timeout=REQUEST_TIMEOUT)
-        resp.raise_for_status()
-        return resp.json()
-    except Exception:
-        # Fallback: browser UA + skip SSL verification (government cert may fail from cloud IPs)
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-        resp = SESSION.get(
-            SENATE_SEARCH_URL,
-            params=params,
-            timeout=REQUEST_TIMEOUT,
-            verify=False,
-            headers={"User-Agent": SENATE_BROWSER_UA, "Accept": "application/json"},
-        )
-        resp.raise_for_status()
-        return resp.json()
+        resp = SESSION.get(EFDSEARCH_HOME_URL, timeout=REQUEST_TIMEOUT)
+        if resp.status_code != 200:
+            logger.warning(
+                f"[senate] efdsearch.senate.gov unreachable (HTTP {resp.status_code}) — "
+                f"likely Akamai bot-management blocking this network; skipping Senate this run"
+            )
+            return []
+    except Exception as e:
+        logger.warning(f"[senate] efdsearch.senate.gov unreachable ({e}) — skipping Senate this run")
+        return []
+
+    logger.info("[senate] efdsearch.senate.gov reachable — attempting live fetch via Playwright")
+    try:
+        return _fetch_via_efdsearch_playwright(years_back, max_reports)
+    except Exception as e:
+        logger.warning(f"[senate] Playwright fetch failed: {e}")
+        return []
 
 
-def fetch_senate_transactions(
-    from_date: str,
-    to_date: str,
-    page_size: int = 100,
-) -> list[dict]:
-    """
-    Fetch Senate periodic transaction reports via EFTS API.
+def _fetch_via_efdsearch_playwright(years_back: int, max_reports: int) -> list[dict]:
+    from playwright.sync_api import sync_playwright
 
-    Args:
-        from_date: ISO date string YYYY-MM-DD
-        to_date:   ISO date string YYYY-MM-DD
-
-    Returns list of raw transaction dicts.
-    """
-    cache_key = f"senate_{from_date}_{to_date}.json"
-    cache_file = RAW_DIR / cache_key
-
-    if USE_CACHE and cache_file.exists():
-        logger.info(f"[senate] Using cached data for {from_date}→{to_date}")
-        with open(cache_file) as f:
-            return json.load(f)
-
+    from_date = (datetime.now() - timedelta(days=years_back * 365)).strftime("%m/%d/%Y")
+    to_date = datetime.now().strftime("%m/%d/%Y")
     all_txns: list[dict] = []
-    offset = 0
-    total = None
 
-    while True:
-        params = {
-            "q": "",
-            "dateRange": "custom",
-            "fromDate": from_date,
-            "toDate": to_date,
-            "pageSize": page_size,
-            "offset": offset,
-        }
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page(user_agent=SENATE_BROWSER_UA)
 
-        try:
-            logger.info(f"[senate] Fetching page offset={offset} ({from_date}→{to_date})")
-            data = _search(params)
-        except Exception as e:
-            logger.error(f"[senate] Fetch failed at offset={offset}: {e}")
-            break
+        page.goto(EFDSEARCH_HOME_URL, timeout=30000)
+        page.get_by_label(re.compile("certify", re.I)).check()
+        page.get_by_role("button", name=re.compile("search reports", re.I)).click()
+        page.wait_for_load_state("networkidle", timeout=30000)
 
-        hits = data.get("hits", {})
-        records = hits.get("hits", [])
+        # Restrict to Periodic Transaction Reports over the requested date range.
+        page.get_by_label(re.compile("periodic transaction report", re.I)).check()
+        page.fill("input[name='fromDate']", from_date)
+        page.fill("input[name='toDate']", to_date)
+        page.get_by_role("button", name=re.compile("search reports", re.I)).click()
+        page.wait_for_selector("table tbody tr", timeout=30000)
 
-        if total is None:
-            total = hits.get("total", {}).get("value", 0)
-            logger.info(f"[senate] Total records available: {total}")
+        report_links = []
+        for row in page.query_selector_all("table tbody tr")[:max_reports]:
+            link = row.query_selector("a")
+            if not link:
+                continue
+            href = link.get_attribute("href")
+            name = row.inner_text().split("\n")[0].strip()
+            if href:
+                report_links.append((name, href))
 
-        for rec in records:
-            source = rec.get("_source", {})
-            txns = _parse_senate_record(source)
-            all_txns.extend(txns)
+        logger.info(f"[senate] Found {len(report_links)} PTR reports; fetching transaction tables")
 
-        offset += page_size
-        if offset >= (total or 0) or not records:
-            break
+        for name, href in report_links:
+            url = href if href.startswith("http") else f"{EFDSEARCH_BASE}{href}"
+            try:
+                report_page = browser.new_page(user_agent=SENATE_BROWSER_UA)
+                report_page.goto(url, timeout=30000)
+                all_txns.extend(_parse_report_page(report_page, name, url))
+                report_page.close()
+            except Exception as e:
+                logger.debug(f"[senate] Failed to parse report {url}: {e}")
 
-        time.sleep(0.3)  # polite rate-limiting
+        browser.close()
 
-    logger.info(f"[senate] Fetched {len(all_txns)} transactions")
-
-    with open(cache_file, "w") as f:
-        json.dump(all_txns, f)
-
+    logger.info(f"[senate] Fetched {len(all_txns)} transactions via Playwright")
     return all_txns
 
 
-def _parse_senate_record(source: dict) -> list[dict]:
+def _parse_report_page(page, member_name: str, report_url: str) -> list[dict]:
     """
-    Parse a single EFTS search result record into normalized transaction dicts.
-
-    EFTS record structure (approximate):
-    {
-      "first_name": str,
-      "last_name": str,
-      "senator_id": str,
-      "transaction_date": str,
-      "date_received": str,
-      "asset_description": str,
-      "asset_type": str,
-      "type": str,          # "Purchase", "Sale", etc.
-      "amount": str,        # range label
-      "comment": str,
-      "link": str,          # link to original PDF
-    }
+    Parse one PTR report's transaction table. Maps columns by header text
+    (rather than a fixed position) since the exact column order could not
+    be verified against a live page — this self-corrects as long as the
+    headers contain the expected keywords.
     """
     txns = []
+    table = page.query_selector("table")
+    if not table:
+        return txns
 
-    first = source.get("first_name", "")
-    last  = source.get("last_name", "")
-    name  = f"{first} {last}".strip()
-    senator_id = source.get("senator_id", "")
+    headers = [th.inner_text().strip().lower() for th in table.query_selector_all("thead th")]
+    col = {}
+    for i, h in enumerate(headers):
+        if "transaction date" in h or h == "date":
+            col.setdefault("date", i)
+        elif "ticker" in h or "symbol" in h:
+            col.setdefault("ticker", i)
+        elif "asset" in h:
+            col.setdefault("asset", i)
+        elif "type" in h:
+            col.setdefault("type", i)
+        elif "amount" in h:
+            col.setdefault("amount", i)
+        elif "comment" in h:
+            col.setdefault("comment", i)
 
-    # EFTS may return multiple transactions in one filing
-    # Check if there's a `transactions` list or just one record
-    raw_txns_list = source.get("transactions", [source])
+    if "date" not in col or "type" not in col:
+        logger.debug(f"[senate] Could not map report table headers: {headers}")
+        return txns
 
-    for raw in raw_txns_list:
-        asset    = raw.get("asset_description", "") or source.get("asset_description", "")
-        asset_type = raw.get("asset_type", "Stock") or source.get("asset_type", "Stock")
-        tx_type  = raw.get("type", "") or source.get("type", "")
-        amount   = raw.get("amount", "") or source.get("amount", "")
-        tx_date  = raw.get("transaction_date", "") or source.get("transaction_date", "")
-        disc_date = raw.get("date_received", "") or source.get("date_received", "")
-        comment  = raw.get("comment", "") or source.get("comment", "")
-        link     = raw.get("link", "") or source.get("link", "")
-
-        # Normalize type
-        tx_type_norm = _normalize_type(tx_type)
-        if not tx_type_norm:
+    for tr in table.query_selector_all("tbody tr"):
+        cells = [td.inner_text().strip() for td in tr.query_selector_all("td")]
+        if len(cells) <= max(col.values()):
             continue
 
-        # Try to extract ticker from asset description
-        ticker = _extract_ticker(asset)
+        trade_type = _normalize_type(cells[col["type"]])
+        if not trade_type:
+            continue
 
-        amount_dict = _parse_amount_label(amount)
-        tx_date_norm  = _normalize_date(tx_date)
-        disc_date_norm = _normalize_date(disc_date)
-
-        # Calculate disclosure delay
-        delay = None
-        if tx_date_norm and disc_date_norm:
-            try:
-                d1 = datetime.strptime(tx_date_norm, "%Y-%m-%d")
-                d2 = datetime.strptime(disc_date_norm, "%Y-%m-%d")
-                delay = (d2 - d1).days
-            except ValueError:
-                pass
-
-        source_url = link or "https://efts.senate.gov/"
-        if link and not link.startswith("http"):
-            source_url = f"https://efts.senate.gov/{link.lstrip('/')}"
+        asset = cells[col["asset"]] if "asset" in col else ""
+        ticker = cells[col["ticker"]] if "ticker" in col else _extract_ticker(asset)
+        amount_raw = cells[col["amount"]] if "amount" in col else ""
+        amount = _parse_amount_label(amount_raw)
+        tx_date = _normalize_date(cells[col["date"]])
 
         txns.append({
             "source": "senate",
-            "member_name": name,
-            "member_id": senator_id,
+            "member_name": member_name,
+            "member_id": "",
             "asset_name": asset,
             "ticker": ticker,
-            "trade_type": tx_type_norm,
-            "raw_amount": amount,
-            "amount_min": amount_dict.get("min"),
-            "amount_max": amount_dict.get("max"),
-            "amount_label": amount_dict.get("label", amount),
-            "trade_date": tx_date_norm,
-            "disclosure_date": disc_date_norm,
-            "disclosure_delay_days": delay,
-            "asset_type": asset_type,
-            "comment": comment,
-            "source_url": source_url,
+            "trade_type": trade_type,
+            "raw_amount": amount_raw,
+            "amount_min": amount.get("min"),
+            "amount_max": amount.get("max"),
+            "amount_label": amount.get("label", amount_raw),
+            "trade_date": tx_date,
+            "disclosure_date": tx_date,
+            "asset_type": "Stock",
+            "comment": cells[col["comment"]] if "comment" in col else "",
+            "source_url": report_url,
         })
 
     return txns
@@ -243,10 +212,8 @@ def _normalize_type(raw: str) -> str | None:
 
 def _extract_ticker(asset_description: str) -> str:
     """Try to extract a ticker symbol from an asset description string."""
-    import re
     if not asset_description:
         return ""
-    # Look for patterns like "(AAPL)", "[MSFT]", or standalone uppercase 1-5 letter words
     patterns = [
         r"\(([A-Z]{1,5})\)",   # (AAPL)
         r"\[([A-Z]{1,5})\]",   # [MSFT]
@@ -256,7 +223,6 @@ def _extract_ticker(asset_description: str) -> str:
         match = re.search(pattern, asset_description)
         if match:
             candidate = match.group(1)
-            # Filter out common non-ticker words
             if candidate not in {"INC", "LLC", "CORP", "LTD", "CO", "THE", "AND", "FOR", "IN", "OF"}:
                 return candidate
     return ""
@@ -264,12 +230,10 @@ def _extract_ticker(asset_description: str) -> str:
 
 def _parse_amount_label(raw: str) -> dict:
     """Parse Senate amount range string to structured dict."""
-    import re
     raw = (raw or "").strip()
     for _code, rng in AMOUNT_RANGES.items():
         if rng["label"].lower() == raw.lower():
             return rng
-    # Try parsing dollar values
     nums = re.findall(r"[\d,]+", raw.replace("$", ""))
     if len(nums) >= 2:
         try:
@@ -284,40 +248,10 @@ def _parse_amount_label(raw: str) -> dict:
 def _normalize_date(raw: str) -> str | None:
     if not raw:
         return None
-    raw = raw.strip().split("T")[0]  # strip time component
-    for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%B %d, %Y"):
+    raw = raw.strip().split("T")[0]
+    for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%d/%m/%Y", "%B %d, %Y"):
         try:
             return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
         except ValueError:
             continue
     return None
-
-
-def fetch_all_senate(years_back: int = 5) -> list[dict]:
-    """
-    Fetch Senate trade disclosures.
-    If QuiverQuant already fetched all data in house_disclosures.fetch_all_house(),
-    the senate cache file will contain Senate records — return those directly.
-    Fallback: Senate EFTS API (may be blocked from cloud IPs).
-    """
-    import json as _json
-    from pipeline.config import RAW_DIR, USE_CACHE
-
-    # Check if QuiverQuant already fetched everything (house provider caches both chambers)
-    from pipeline.config import ARTIFACTS_DIR
-    quiver_cache = ARTIFACTS_DIR / "quiver_cache.json"
-    if USE_CACHE and quiver_cache.exists():
-        try:
-            with open(quiver_cache) as f:
-                all_records = _json.load(f)
-            senate_records = [r for r in all_records if r.get("source") == "senate"]
-            if senate_records:
-                logger.info(f"[senate] Using {len(senate_records)} Senate trades from QuiverQuant cache")
-                return senate_records
-        except Exception:
-            pass
-
-    # Fallback: Senate EFTS API
-    from_date = (datetime.now() - timedelta(days=years_back * 365)).strftime("%Y-%m-%d")
-    to_date   = datetime.now().strftime("%Y-%m-%d")
-    return fetch_senate_transactions(from_date, to_date)

@@ -31,6 +31,15 @@ jobs:
           cd pipeline
           pip install -r requirements.txt
 
+      - name: Install Playwright browser (Senate PTR fetch)
+        # Best-effort: efdsearch.senate.gov may be blocked from this runner's
+        # network regardless (see senate_disclosures.py); non-fatal so a
+        # browser-install hiccup never blocks the House data update.
+        continue-on-error: true
+        run: |
+          cd pipeline
+          python -m playwright install --with-deps chromium
+
       - name: Run data pipeline
         env:
           CONGRESS_API_KEY:  ${{ secrets.CONGRESS_API_KEY }}

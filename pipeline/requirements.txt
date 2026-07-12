@@ -7,6 +7,11 @@ httpx>=0.26.0
 # Market data (no API key required)
 yfinance>=0.2.36
 
+# Senate PTR fetch — real browser needed, efdsearch.senate.gov is Akamai-
+# protected (see pipeline/providers/senate_disclosures.py). Best-effort:
+# a cheap reachability probe skips launching this if the network is blocked.
+playwright>=1.40.0
+
 # Data parsing
 lxml>=5.0.0
 beautifulsoup4>=4.12.0
