@@ -50,6 +50,18 @@ jobs:
           cd pipeline
           python main.py --step all
 
+      - name: Upload Senate debug artifacts (only present on a failed fetch)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: senate-debug
+          # ARTIFACTS_DIR resolves from config.py's own file path (repo
+          # root/data/artifacts), not the `cd pipeline` cwd used in run:
+          # steps above — this path is relative to GITHUB_WORKSPACE (repo root).
+          path: data/artifacts/_debug/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Commit updated artifacts
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"

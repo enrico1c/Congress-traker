@@ -78,6 +78,25 @@ def fetch_all_senate(years_back: int = 5, max_reports: int = 200) -> list[dict]:
         return []
 
 
+QCHECKBOX_SEL = "input[type='checkbox']"
+QSUBMIT_SEL = "button[type='submit'], input[type='submit']"
+
+
+def _dump_debug_artifacts(page, label: str) -> None:
+    """Save a screenshot + HTML dump so the next run's logs show exactly
+    what the real page looked like, instead of guessing selectors blind
+    again. Written to data/artifacts/ so the workflow can upload them."""
+    from pipeline.config import ARTIFACTS_DIR
+    try:
+        debug_dir = ARTIFACTS_DIR / "_debug"
+        debug_dir.mkdir(exist_ok=True)
+        page.screenshot(path=str(debug_dir / f"senate_{label}.png"), full_page=True)
+        (debug_dir / f"senate_{label}.html").write_text(page.content())
+        logger.warning(f"[senate] Debug artifacts written to data/artifacts/_debug/senate_{label}.*")
+    except Exception as dump_err:
+        logger.debug(f"[senate] Could not write debug artifacts: {dump_err}")
+
+
 def _fetch_via_efdsearch_playwright(years_back: int, max_reports: int) -> list[dict]:
     from playwright.sync_api import sync_playwright
 
@@ -89,17 +108,32 @@ def _fetch_via_efdsearch_playwright(years_back: int, max_reports: int) -> list[d
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(user_agent=SENATE_BROWSER_UA)
 
-        page.goto(EFDSEARCH_HOME_URL, timeout=30000)
-        page.get_by_label(re.compile("certify", re.I)).check()
-        page.get_by_role("button", name=re.compile("search reports", re.I)).click()
-        page.wait_for_load_state("networkidle", timeout=30000)
+        try:
+            page.goto(EFDSEARCH_HOME_URL, timeout=30000)
+            # Positional/type-based selectors, not label text — this flow was
+            # never verified against a live page (efdsearch.senate.gov was
+            # blocked from every dev environment used to write this; see
+            # module docstring), so this avoids guessing exact copy that
+            # a first live run already showed was wrong (the label-text
+            # checkbox selector timed out — see the debug dump below for
+            # what the real page actually contains).
+            page.locator(QCHECKBOX_SEL).first.check(timeout=15000)
+            page.locator(QSUBMIT_SEL).first.click(timeout=15000)
+            page.wait_for_load_state("networkidle", timeout=30000)
 
-        # Restrict to Periodic Transaction Reports over the requested date range.
-        page.get_by_label(re.compile("periodic transaction report", re.I)).check()
-        page.fill("input[name='fromDate']", from_date)
-        page.fill("input[name='toDate']", to_date)
-        page.get_by_role("button", name=re.compile("search reports", re.I)).click()
-        page.wait_for_selector("table tbody tr", timeout=30000)
+            # Restrict to Periodic Transaction Reports over the requested date range.
+            page.get_by_label(re.compile("periodic transaction report", re.I)).check(timeout=15000)
+            page.fill("input[name='fromDate']", from_date)
+            page.fill("input[name='toDate']", to_date)
+            page.locator(QSUBMIT_SEL).first.click(timeout=15000)
+            page.wait_for_selector("table tbody tr", timeout=30000)
+        except Exception as e:
+            # Couldn't verify this flow live before shipping it (see module
+            # docstring) — dump enough evidence on first failure to fix the
+            # real selectors from actual page content instead of guessing again.
+            _dump_debug_artifacts(page, "home_or_search")
+            browser.close()
+            raise RuntimeError(f"efdsearch flow failed before reaching results: {e}") from e
 
         report_links = []
         for row in page.query_selector_all("table tbody tr")[:max_reports]:

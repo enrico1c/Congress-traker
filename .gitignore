@@ -29,6 +29,9 @@ pipeline/.venv/
 
 # Data artifacts are committed so the app builds without running pipeline
 # data/artifacts/ — DO commit these
+# Debug screenshots/HTML dumps from a failed Senate Playwright run (see
+# senate_disclosures.py) — scratch evidence for fixing selectors, not data.
+data/artifacts/_debug/
 
 # OS
 .DS_Store
