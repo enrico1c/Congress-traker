@@ -18,17 +18,24 @@ heavier Playwright flow would succeed too — a genuinely-blocked run skips
 installing/launching a browser entirely.
 
 Turns out GitHub Actions' own runner network reaches this site fine (only
-this project's dev environments were blocked) — a real run got past the
-reachability probe and captured a screenshot + HTML dump of the actual
-search form (data/artifacts/_debug/, see _dump_debug_artifacts), which is
-how the selectors below were verified: no "agree to terms" gate exists on
-this form at all (an earlier version of this flow assumed one and got
-stuck on it); the Periodic Transactions checkbox has a non-unique id
-("reportTypes" repeated on every checkbox in the group — invalid HTML,
-but real), so it's selected by its name+value pair instead
-(input[name='report_type'][value='11']); and the date fields are
-input#fromDate/#toDate — their name attributes (submitted_start_date/
-submitted_end_date) are not fromDate/toDate as an earlier guess assumed.
+this project's dev environments were blocked) — two real runs got past
+the reachability probe and captured screenshots + HTML dumps of the
+actual pages (data/artifacts/_debug/, see _dump_debug_artifacts), which
+is how the two-page flow below was verified:
+
+1. /search/home/ is a one-time "Get Access" gate: a single #agree_statement
+   checkbox whose jQuery onchange handler submits #agreement_form itself
+   (confirmed from the page's own <script> block) — no separate submit
+   button to click, and a first attempt that assumed the *first checkbox
+   on the page* (rather than this specific id) grabbed the wrong element
+   once past this gate and never got past a second bug (below) either.
+2. The real Find Reports search page has a Periodic Transactions checkbox
+   with report_type value 11, confirmed from the form's own HTML — its id
+   is duplicated across every checkbox in the group (invalid HTML, but
+   real), so it's selected by name+value instead of id/label. Its date
+   fields are input#fromDate/#toDate — their name attributes
+   (submitted_start_date/submitted_end_date) are not fromDate/toDate as
+   an earlier guess assumed.
 """
 import logging
 import re
@@ -118,11 +125,26 @@ def _fetch_via_efdsearch_playwright(years_back: int, max_reports: int) -> list[d
 
         try:
             page.goto(EFDSEARCH_HOME_URL, timeout=30000)
-            # No "agree to terms" gate exists on this form (an earlier version
-            # of this flow assumed one and got stuck checking the wrong box —
-            # the "Senator" filer-type checkbox — then submitting an empty
-            # search). Report Type + date range alone satisfy the site's
-            # "at least one search option" requirement.
+            # /search/home/ is a one-time "Get Access" gate (confirmed from a
+            # captured page dump): a single #agree_statement checkbox whose
+            # jQuery onchange handler does $("#agreement_form").submit(),
+            # auto-navigating to the real Find Reports search page — no
+            # separate submit button to click here.
+            page.check("#agree_statement", timeout=15000)
+            page.wait_for_load_state("networkidle", timeout=30000)
+        except Exception as e:
+            _dump_debug_artifacts(page, "agree_page")
+            browser.close()
+            raise RuntimeError(f"efdsearch agreement gate failed: {e}") from e
+
+        try:
+            # Find Reports page (confirmed from a second captured dump): the
+            # Periodic Transactions checkbox has report_type value 11 and a
+            # non-unique id ("reportTypes" repeated on every checkbox in the
+            # group — invalid HTML, but real), so it's selected by name+value
+            # instead; the date fields are input#fromDate/#toDate (their name
+            # attributes are submitted_start_date/submitted_end_date, not
+            # fromDate/toDate as an earlier guess assumed).
             page.locator(QPTR_CHECKBOX_SEL).check(timeout=15000)
             page.fill("#fromDate", from_date)
             page.fill("#toDate", to_date)
@@ -130,10 +152,7 @@ def _fetch_via_efdsearch_playwright(years_back: int, max_reports: int) -> list[d
             page.wait_for_load_state("networkidle", timeout=30000)
             page.wait_for_selector("table tbody tr", timeout=30000)
         except Exception as e:
-            # Couldn't verify this flow live before shipping it (see module
-            # docstring) — dump enough evidence on first failure to fix the
-            # real selectors from actual page content instead of guessing again.
-            _dump_debug_artifacts(page, "home_or_search")
+            _dump_debug_artifacts(page, "search_page")
             browser.close()
             raise RuntimeError(f"efdsearch flow failed before reaching results: {e}") from e
 
