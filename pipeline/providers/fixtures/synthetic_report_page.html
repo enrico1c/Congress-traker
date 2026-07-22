@@ -1,0 +1,66 @@
+<!--
+SYNTHETIC FIXTURE — NOT a real captured Senate eFD page. efdsearch.senate.gov
+is Akamai-blocked from every environment available when this fixture was
+written (confirmed 403 via requests, Playwright, and a browser-automation
+tool from a different network — all blocked identically), so this encodes a
+HYPOTHESIS, not verified ground truth: that a report page renders a "Filer
+Information" summary table before the real transactions table, and that the
+old _parse_report_page() parsed 0/25 real reports in production because it
+grabbed the first <table> on the page unconditionally instead of picking the
+one whose headers actually match transaction columns.
+
+Replace this file with a real captured report page once one lands in
+data/artifacts/_debug/senate_report_page_empty.html (see the debug dump
+_fetch_via_efdsearch_playwright now writes on the next CI run that hits an
+empty parse result), and re-run test_parse_report_page.py against it before
+trusting this fix against production data.
+-->
+<html>
+<body>
+<table id="filerInformation">
+  <thead>
+    <tr><th>Name</th><th>Filing Type</th><th>State/District</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Jane Q. Senator</td><td>Periodic Transaction Report</td><td>CA</td></tr>
+  </tbody>
+</table>
+
+<table id="transactions">
+  <thead>
+    <tr>
+      <th>Transaction Date</th>
+      <th>Owner</th>
+      <th>Ticker</th>
+      <th>Asset Name</th>
+      <th>Asset Type</th>
+      <th>Type</th>
+      <th>Amount</th>
+      <th>Comment</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>01/15/2026</td>
+      <td>Self</td>
+      <td>AAPL</td>
+      <td>Apple Inc. Common Stock</td>
+      <td>Stock</td>
+      <td>Purchase</td>
+      <td>$1,001 - $15,000</td>
+      <td></td>
+    </tr>
+    <tr>
+      <td>02/03/2026</td>
+      <td>Spouse</td>
+      <td>MSFT</td>
+      <td>Microsoft Corporation Common Stock</td>
+      <td>Stock</td>
+      <td>Sale (Full)</td>
+      <td>$15,001 - $50,000</td>
+      <td>Routine rebalancing</td>
+    </tr>
+  </tbody>
+</table>
+</body>
+</html>

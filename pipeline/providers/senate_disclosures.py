@@ -168,12 +168,20 @@ def _fetch_via_efdsearch_playwright(years_back: int, max_reports: int) -> list[d
 
         logger.info(f"[senate] Found {len(report_links)} PTR reports; fetching transaction tables")
 
+        dumped_empty_report = False
         for name, href in report_links:
             url = href if href.startswith("http") else f"{EFDSEARCH_BASE}{href}"
             try:
                 report_page = browser.new_page(user_agent=SENATE_BROWSER_UA)
                 report_page.goto(url, timeout=30000)
-                all_txns.extend(_parse_report_page(report_page, name, url))
+                txns = _parse_report_page(report_page, name, url)
+                if not txns and not dumped_empty_report:
+                    # Capture the first report that parsed to 0 transactions so
+                    # the next run leaves real evidence instead of staying
+                    # invisible again (see _parse_report_page's docstring).
+                    _dump_debug_artifacts(report_page, "report_page_empty")
+                    dumped_empty_report = True
+                all_txns.extend(txns)
                 report_page.close()
             except Exception as e:
                 logger.debug(f"[senate] Failed to parse report {url}: {e}")
@@ -184,19 +192,8 @@ def _fetch_via_efdsearch_playwright(years_back: int, max_reports: int) -> list[d
     return all_txns
 
 
-def _parse_report_page(page, member_name: str, report_url: str) -> list[dict]:
-    """
-    Parse one PTR report's transaction table. Maps columns by header text
-    (rather than a fixed position) since the exact column order could not
-    be verified against a live page — this self-corrects as long as the
-    headers contain the expected keywords.
-    """
-    txns = []
-    table = page.query_selector("table")
-    if not table:
-        return txns
-
-    headers = [th.inner_text().strip().lower() for th in table.query_selector_all("thead th")]
+def _map_columns(headers: list[str]) -> dict:
+    """Map column keywords to indices for one table's header row."""
     col = {}
     for i, h in enumerate(headers):
         if "transaction date" in h or h == "date":
@@ -211,9 +208,36 @@ def _parse_report_page(page, member_name: str, report_url: str) -> list[dict]:
             col.setdefault("amount", i)
         elif "comment" in h:
             col.setdefault("comment", i)
+    return col
 
-    if "date" not in col or "type" not in col:
-        logger.debug(f"[senate] Could not map report table headers: {headers}")
+
+def _parse_report_page(page, member_name: str, report_url: str) -> list[dict]:
+    """
+    Parse one PTR report's transaction table. Maps columns by header text
+    (rather than a fixed position) since the exact column order could not
+    be verified against a live page — this self-corrects as long as the
+    headers contain the expected keywords.
+
+    Report pages can render more than one <table> (e.g. a "Filer
+    Information" summary table above the actual transactions table), so
+    every table on the page is checked and the first one whose headers
+    contain the expected transaction columns (date/type) is used — the
+    previous code assumed the first <table> on the page was always the
+    right one, which parsed 0 transactions whenever a summary table came
+    first.
+    """
+    txns = []
+    table, col = None, {}
+    for candidate in page.query_selector_all("table"):
+        headers = [th.inner_text().strip().lower() for th in candidate.query_selector_all("thead th")]
+        candidate_col = _map_columns(headers)
+        if "date" in candidate_col and "type" in candidate_col:
+            table, col = candidate, candidate_col
+            break
+        logger.debug(f"[senate] Table headers didn't match transaction columns, skipping: {headers}")
+
+    if table is None:
+        logger.debug(f"[senate] No table with recognizable transaction headers found on {report_url}")
         return txns
 
     for tr in table.query_selector_all("tbody tr"):
