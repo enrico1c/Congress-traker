@@ -121,7 +121,16 @@ def _fetch_via_efdsearch_playwright(years_back: int, max_reports: int) -> list[d
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        page = browser.new_page(user_agent=SENATE_BROWSER_UA)
+        # A single shared BrowserContext for the whole flow — Browser.new_page()
+        # (the previous per-report call below) creates a NEW, isolated context
+        # per call, so the #agree_statement cookie set here never carried over
+        # to any report fetch: every report page landed back on the "you must
+        # agree" gate instead of the actual report, silently parsing 0
+        # transactions every time (confirmed via a real captured page dump —
+        # see data/artifacts/_debug/senate_report_page_empty.* from a live CI
+        # run). All pages must come from this same context to share cookies.
+        context = browser.new_context(user_agent=SENATE_BROWSER_UA)
+        page = context.new_page()
 
         try:
             page.goto(EFDSEARCH_HOME_URL, timeout=30000)
@@ -172,7 +181,7 @@ def _fetch_via_efdsearch_playwright(years_back: int, max_reports: int) -> list[d
         for name, href in report_links:
             url = href if href.startswith("http") else f"{EFDSEARCH_BASE}{href}"
             try:
-                report_page = browser.new_page(user_agent=SENATE_BROWSER_UA)
+                report_page = context.new_page()  # same context as `page` above — shares the agree/search cookies
                 report_page.goto(url, timeout=30000)
                 txns = _parse_report_page(report_page, name, url)
                 if not txns and not dumped_empty_report:
