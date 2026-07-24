@@ -165,30 +165,46 @@ def _fetch_via_efdsearch_playwright(years_back: int, max_reports: int) -> list[d
             browser.close()
             raise RuntimeError(f"efdsearch flow failed before reaching results: {e}") from e
 
-        # TEMP INVESTIGATION: only 25 reports were ever found, all from
-        # 2021-2023 -- suspiciously close to years_back's own boundary and
-        # far short of "recent". Capture the results page once to see the
-        # real DataTable structure (pagination / sort / total-row-count)
-        # before guessing at a fix. Remove once the real gap is understood.
-        _dump_debug_artifacts(page, "search_results_page")
-        info_el = page.query_selector(".dataTables_info")
-        if info_el:
-            logger.warning(f"[senate] DataTables info: {info_el.inner_text()!r}")
-        paginate_el = page.query_selector(".dataTables_paginate")
-        if paginate_el:
-            logger.warning(f"[senate] DataTables paginate control present: {paginate_el.inner_text()!r}")
+        # The results table (#filedReports) is a DataTable defaulting to
+        # sorted-by-Last-Name-ascending, 25 rows/page (confirmed via a real
+        # captured dump: "Showing 1 to 25 of 679 entries", 28 pages). Reading
+        # only page 1 as-is silently returned whichever handful of A/B-surname
+        # senators (e.g. Blumenthal, an unusually prolific trader) filled it,
+        # not "the oldest reports" as first suspected -- date wasn't the sort
+        # key at all. Fixed by: bumping page size to the table's own max
+        # (100, the highest <option> in its length menu) and re-sorting by
+        # the "Date Received/Filed" column so the most recent filings across
+        # ALL senators come first, then paginating until max_reports is hit.
+        page.select_option("select[name='filedReports_length']", "100")
+        page.wait_for_load_state("networkidle", timeout=30000)
+        date_header = page.locator("th[aria-label*='Date Received/Filed']")
+        date_header.click()  # 1st click: ascending
+        page.wait_for_load_state("networkidle", timeout=30000)
+        date_header.click()  # 2nd click: descending (most recent first)
+        page.wait_for_function(
+            "document.querySelector(\"th[aria-label*='Date Received/Filed']\").getAttribute('aria-sort') === 'descending'",
+            timeout=15000,
+        )
+        page.wait_for_load_state("networkidle", timeout=30000)
 
         report_links = []
-        for row in page.query_selector_all("table tbody tr")[:max_reports]:
-            link = row.query_selector("a")
-            if not link:
-                continue
-            href = link.get_attribute("href")
-            name = row.inner_text().split("\n")[0].strip()
-            if href:
-                report_links.append((name, href))
+        while len(report_links) < max_reports:
+            for row in page.query_selector_all("table#filedReports tbody tr"):
+                link = row.query_selector("a")
+                if not link:
+                    continue
+                href = link.get_attribute("href")
+                name = row.inner_text().split("\n")[0].strip()
+                if href:
+                    report_links.append((name, href))
+            next_btn = page.query_selector("#filedReports_next:not(.disabled)")
+            if not next_btn or len(report_links) >= max_reports:
+                break
+            next_btn.click()
+            page.wait_for_load_state("networkidle", timeout=30000)
+        report_links = report_links[:max_reports]
 
-        logger.info(f"[senate] Found {len(report_links)} PTR reports; fetching transaction tables")
+        logger.info(f"[senate] Found {len(report_links)} PTR reports (sorted most-recent-first); fetching transaction tables")
 
         dumped_empty_report = False
         for name, href in report_links:
