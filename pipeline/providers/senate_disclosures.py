@@ -165,6 +165,19 @@ def _fetch_via_efdsearch_playwright(years_back: int, max_reports: int) -> list[d
             browser.close()
             raise RuntimeError(f"efdsearch flow failed before reaching results: {e}") from e
 
+        # TEMP INVESTIGATION: only 25 reports were ever found, all from
+        # 2021-2023 -- suspiciously close to years_back's own boundary and
+        # far short of "recent". Capture the results page once to see the
+        # real DataTable structure (pagination / sort / total-row-count)
+        # before guessing at a fix. Remove once the real gap is understood.
+        _dump_debug_artifacts(page, "search_results_page")
+        info_el = page.query_selector(".dataTables_info")
+        if info_el:
+            logger.warning(f"[senate] DataTables info: {info_el.inner_text()!r}")
+        paginate_el = page.query_selector(".dataTables_paginate")
+        if paginate_el:
+            logger.warning(f"[senate] DataTables paginate control present: {paginate_el.inner_text()!r}")
+
         report_links = []
         for row in page.query_selector_all("table tbody tr")[:max_reports]:
             link = row.query_selector("a")
