@@ -18,6 +18,30 @@ import type {
 
 const ARTIFACTS_DIR = path.join(process.cwd(), "data", "artifacts");
 
+// The Python pipeline writes some fields snake_case (policy_areas, first_name,
+// photo_url, ...) while every TypeScript type in @/lib/types declares them
+// camelCase — a mismatch that crashed every single Member/Company static page
+// at build time (undefined.length on co.policyAreas). Converting once here,
+// recursively, fixes every artifact/entity uniformly instead of special-casing
+// each field in the Python pipeline (which uses policy_areas as its own
+// internal dict key throughout, e.g. overlap_scorer.py) or in every component
+// that reads a Member/Company.
+function toCamelCase(key: string): string {
+  return key.replace(/_([a-z0-9])/g, (_, c) => c.toUpperCase());
+}
+
+function camelCaseKeysDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(camelCaseKeysDeep);
+  if (value !== null && typeof value === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      result[toCamelCase(k)] = camelCaseKeysDeep(v);
+    }
+    return result;
+  }
+  return value;
+}
+
 function readArtifact<T>(filename: string): T {
   const filePath = path.join(ARTIFACTS_DIR, filename);
   if (!fs.existsSync(filePath)) {
@@ -26,7 +50,7 @@ function readArtifact<T>(filename: string): T {
     return (Array.isArray([] as unknown as T) ? [] : {}) as T;
   }
   const raw = fs.readFileSync(filePath, "utf-8");
-  return JSON.parse(raw) as T;
+  return camelCaseKeysDeep(JSON.parse(raw)) as T;
 }
 
 // ---- Members -----------------------------------------------
