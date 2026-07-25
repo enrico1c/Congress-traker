@@ -194,8 +194,17 @@ def _fetch_via_efdsearch_playwright(years_back: int, max_reports: int) -> list[d
                 if not link:
                     continue
                 href = link.get_attribute("href")
-                name = row.inner_text().split("\n")[0].strip()
-                if href:
+                # Row cells are [First Name (Middle), Last Name (Suffix),
+                # Office, Report Type, Date] (confirmed from a real captured
+                # dump). row.inner_text().split("\n")[0] previously grabbed
+                # only the first cell -- the first name alone, e.g. "Alan"
+                # instead of "Alan Armstrong" -- which member_resolver.py's
+                # matching could then only succeed on by fuzzy-match luck,
+                # silently dropping the vast majority of parsed transactions
+                # with no error anywhere (see MemberResolver.resolve()).
+                cells = row.query_selector_all("td")
+                name = " ".join(c.inner_text().strip() for c in cells[:2] if c.inner_text().strip())
+                if href and name:
                     report_links.append((name, href))
             next_btn = page.query_selector("#filedReports_next:not(.disabled)")
             if not next_btn or len(report_links) >= max_reports:
