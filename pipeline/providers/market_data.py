@@ -15,6 +15,7 @@ It is widely used, stable, and requires no key.
 """
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -29,6 +30,17 @@ from pipeline.config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_filename_component(value: str) -> str:
+    """Sanitize a string for use as a filesystem path component.
+
+    Tickers can contain '/' (e.g. BRK/A) or, for unresolved fallbacks, arbitrary
+    characters from a truncated asset name — neither is safe to drop straight
+    into a path, since '/' is interpreted as a directory separator.
+    """
+    return re.sub(r"[^A-Za-z0-9._-]", "_", value)
+
 
 # Lazy import yfinance to avoid hard dependency if not installed
 _yf = None
@@ -45,7 +57,7 @@ def get_company_info(ticker: str) -> dict:
     Fetch company name, sector, and industry for a ticker symbol.
     Uses yfinance (Yahoo Finance) — no API key required.
     """
-    cache_file = RAW_DIR / f"company_{ticker.upper()}.json"
+    cache_file = RAW_DIR / f"company_{_safe_filename_component(ticker.upper())}.json"
     if USE_CACHE and cache_file.exists():
         with open(cache_file) as f:
             return json.load(f)
@@ -89,7 +101,7 @@ def get_price_history(ticker: str, period: str = "5y") -> dict[str, float]:
 
     Uses yfinance (Yahoo Finance, no API key).
     """
-    cache_file = RAW_DIR / f"prices_{ticker.upper()}_{period}.json"
+    cache_file = RAW_DIR / f"prices_{_safe_filename_component(ticker.upper())}_{period}.json"
     if USE_CACHE and cache_file.exists():
         with open(cache_file) as f:
             return json.load(f)
